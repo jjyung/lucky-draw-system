@@ -142,6 +142,13 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | FR-CAMP-14 | 系統 MUST 支援 replay 語意：相同複合鍵的重複請求回傳與第一次完全相同的結果，**不重抽、不重扣庫存、不重扣次數** | Must | ADR-005 |
 | FR-CAMP-15 | 批次抽獎 `count = N` MUST 一次扣除 N 次抽獎次數（僅成功產生結果的請求計次） | Must | ADR-005 |
 
+**防超抽（抽獎路徑）：**
+
+| ID | 需求描述 | 優先級 | 對應 ADR |
+|----|----------|--------|----------|
+| FR-CAMP-18 | 抽中獎品時，系統 MUST 以 Redis Lua script 原子預扣庫存（檢查 `> 0` 後 `DECR`），杜絕 read-check-act 競態 | Must | ADR-003, ADR-006 |
+| FR-CAMP-19 | 庫存不足時（Redis 預扣回傳 0），抽獎結果 MUST 降級為銘謝惠顧（不重抽、不發布 inventory-commit） | Must | ADR-006 |
+
 **事件發布：**
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
@@ -150,15 +157,15 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 ### 2.4 Inventory Service
 
+> 註：抽獎路徑的「熱點庫存預扣（Redis Lua）」與「庫存不足降級銘謝惠顧」屬 campaign-service 職責（見 FR-CAMP-18 / FR-CAMP-19）。inventory-service 職責為**庫存真相來源**：消費 `inventory-commit`、執行 DB 條件更新、冪等、補償與對帳。
+
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-INV-01 | 系統 MUST 以 Redis Lua script 原子執行熱點庫存預扣（檢查 `> 0` 後 `DECR`），杜絕 read-check-act 競態 | Must | ADR-003, ADR-006 |
-| FR-INV-02 | 系統 MUST 消費 `inventory-commit` 事件，並以原子條件更新寫回 DB 真相來源：`UPDATE inventory SET stock = stock - 1 WHERE id = ? AND stock > 0` | Must | ADR-006, ADR-007 |
-| FR-INV-03 | 系統 MUST 保證**實際發放獎品數絕不超過庫存**（DB 條件更新為最終保證） | Must | ADR-006 |
-| FR-INV-04 | 庫存不足時（Redis 預扣回傳 0），抽獎結果 MUST 降級為銘謝惠顧（不重抽、不發布 inventory-commit） | Must | ADR-006 |
-| FR-INV-05 | DB 條件更新影響 0 列時，系統 MUST 執行補償（回滾中獎結果、修正 Redis counter、發出 alert） | Must | ADR-006 |
-| FR-INV-06 | consumer MUST 冪等（依 `drawRecordId` 去重），避免消息重複投遞造成重複扣減 | Must | ADR-006, ADR-007 |
-| FR-INV-07 | 系統 SHOULD 提供定期對帳 job（以 DB 庫存校正 Redis counter、回收超時預留） | Should | ADR-006 |
+| FR-INV-01 | 系統 MUST 消費 `inventory-commit` 事件，並以原子條件更新寫回 DB 真相來源：`UPDATE inventory SET stock = stock - 1 WHERE id = ? AND stock > 0` | Must | ADR-006, ADR-007 |
+| FR-INV-02 | 系統 MUST 保證**實際發放獎品數絕不超過庫存**（DB 條件更新為最終保證） | Must | ADR-006 |
+| FR-INV-03 | DB 條件更新影響 0 列時，系統 MUST 執行補償（回滾中獎結果、修正 Redis counter、發出 alert） | Must | ADR-006 |
+| FR-INV-04 | consumer MUST 冪等（依 `drawRecordId` 去重），避免消息重複投遞造成重複扣減 | Must | ADR-006, ADR-007 |
+| FR-INV-05 | 系統 SHOULD 提供定期對帳 job（以 DB 庫存校正 Redis counter、回收超時預留） | Should | ADR-006 |
 
 ### 2.5 交錯需求 (Cross-cutting)
 
@@ -213,7 +220,7 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | 多次連續抽獎（批次 + 並發） | FR-CAMP-08, FR-CAMP-09 |
 | 各活動自訂抽獎次數上限 | FR-CAMP-11, FR-CAMP-12 |
 | 使用者不超抽次數 | FR-CAMP-11, FR-CAMP-12, FR-CAMP-13 |
-| 防止獎品超抽 | FR-INV-01 ~ FR-INV-06 |
+| 防止獎品超抽 | FR-CAMP-18, FR-CAMP-19, FR-INV-01 ~ FR-INV-05 |
 | 高可用、水平擴展 | NFR-01, NFR-02 |
 | 高併發事務一致性 | NFR-03 |
 | DataSource / 連線池環境變數切換 | NFR-04 |

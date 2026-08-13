@@ -151,7 +151,7 @@ campaign-service 是此能力的承載者：它回答「**系統要提供什麼�
   - 超限（活動總額）回傳 `429`，不產生新記錄、不扣庫存。
   - 同鍵重送回傳原結果，不產生第二筆記錄、不重扣。
   - 庫存不足時回傳銘謝惠顧，不重抽、不發布 `inventory-commit`。
-- **Traceability:** `FR-CAMP-07`, `FR-CAMP-09`, `FR-CAMP-10`, `FR-CAMP-11`, `FR-CAMP-12`, `FR-CAMP-13`, `FR-CAMP-14`, `FR-CAMP-17`, `FR-INV-04`（引用）, `FR-X-01`
+- **Traceability:** `FR-CAMP-07`, `FR-CAMP-09`, `FR-CAMP-10`, `FR-CAMP-11`, `FR-CAMP-12`, `FR-CAMP-13`, `FR-CAMP-14`, `FR-CAMP-17`, `FR-CAMP-18`, `FR-CAMP-19`, `FR-X-01`
 
 ---
 
@@ -177,7 +177,7 @@ campaign-service 是此能力的承載者：它回答「**系統要提供什麼�
   - 剩餘次數不足 N 時整批不執行，回傳 `429`，不產生部分結果。
   - 同鍵 replay 回傳與第一次完全相同的 N 筆結果，不重落、不重扣、不重計。
   - 整批中部分獎品庫存不足者，該筆降級銘謝惠顧，其餘筆不受影響。
-- **Traceability:** `FR-CAMP-08`, `FR-CAMP-10`, `FR-CAMP-15`, `FR-X-02`, `FR-INV-04`（引用）
+- **Traceability:** `FR-CAMP-08`, `FR-CAMP-10`, `FR-CAMP-15`, `FR-CAMP-18`, `FR-CAMP-19`, `FR-X-02`
 
 ---
 
@@ -354,7 +354,7 @@ DRAFT ──► ACTIVE ──► ENDED (終態)
 
 ### 6.6 防超抽降級 (Anti-Overselling Degrade)
 
-**AC-CAMP-014 — 庫存不足降級銘謝惠顧（不重抽）**（`FR-INV-04`, `FR-CAMP-10`）
+**AC-CAMP-014 — 庫存不足降級銘謝惠顧（不重抽）**（`FR-CAMP-19`, `FR-CAMP-10`）
 - GIVEN 抽選命中獎品但該獎品庫存不足（預扣回傳 0）
 - WHEN 抽獎流程執行
 - THEN 結果降級為 `THANK_YOU`、落一筆銘謝惠顧記錄、**不重抽**、不發布 `inventory-commit`、本次仍計次 1 次
@@ -408,10 +408,11 @@ DRAFT ──► ACTIVE ──► ENDED (終態)
 | FR-CAMP-14 | replay 回傳原結果、不重抽/扣/計 | UC-4, UC-5 | AC-CAMP-012, AC-CAMP-013 |
 | FR-CAMP-15 | 批次一次扣 N 次（僅成功計次） | UC-5 | AC-CAMP-009, AC-CAMP-010 |
 | FR-CAMP-17 | 中獎發布 inventory-commit | UC-4, UC-5 | AC-CAMP-016 |
+| FR-CAMP-18 | Redis Lua 原子預扣（抽獎路徑） | UC-4, UC-5 | AC-CAMP-004, AC-CAMP-008 |
+| FR-CAMP-19 | 庫存不足降級銘謝惠顧（不重抽） | UC-4, UC-5 | AC-CAMP-014 |
 | FR-X-01 | 錯誤流程與輸入驗證（400/401/403/404/409/429/500） | UC-1~UC-5 | AC-CAMP-001/002/003/005/006/010 |
 | FR-X-02 | 批次副作用僅執行一次 | UC-5 | AC-CAMP-013 |
 | FR-X-03 | 前後端分離、RESTful | —（屬 SD，本文件 Out of Scope） | — |
 | FR-X-04 | OpenAPI 3.0 文件 | —（屬 SD，本文件 Out of Scope） | — |
-| FR-INV-04（引用） | 庫存不足降級銘謝惠顧、不重抽 | UC-4, UC-5 | AC-CAMP-014 |
 | NFR-03（引用） | 高併發一致性（加速層 + 真相層） | UC-4, UC-5（語意） | AC-CAMP-011/012/014 |
 | NFR-07（引用） | 機率分布 / 邊界 / 錯誤測試 | — | AC-CAMP-015 |
