@@ -116,12 +116,12 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-CAMP-01 | 系統 MUST 支援抽獎活動 CRUD，並具活動狀態機：`DRAFT` → `ACTIVE` → `PAUSED` / `ENDED` | Must | ADR-002 |
+| FR-CAMP-01 | 系統 MUST 支援抽獎活動 CRUD，並具活動狀態機：`DRAFT` → `ACTIVE` → `ENDED` | Must | ADR-002 |
 | FR-CAMP-02 | 系統 MUST 支援每活動配置多個獎品，每個獎品可設定名稱、庫存數量、中獎機率 | Must | ADR-004 |
 | FR-CAMP-03 | 系統 MUST 支援「銘謝惠顧」作為無獎品選項（建模為 `type = THANK_YOU` 的獎品） | Must | ADR-004 |
 | FR-CAMP-04 | 系統 MUST 在配置/更新時驗證所有獎品（含銘謝惠顧）機率總和等於 100%（浮點容差內），否則回傳 `400/422` 且不落庫 | Must | ADR-004 |
 | FR-CAMP-05 | 系統 MUST 支援動態修改獎品內容（名稱、數量、機率），修改後於後續抽獎生效 | Must | ADR-004 |
-| FR-CAMP-06 | 系統 MUST 驗證每個獎品機率介於 `(0, 100]`，且至少存在一個 `THANK_YOU` 獎品 | Must | ADR-004 |
+| FR-CAMP-06 | 系統 MUST 驗證每個獎品機率介於 `[0, 100]`（非負且不超過 100） | Must | ADR-004 |
 
 **抽獎模式：**
 
@@ -141,14 +141,12 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | FR-CAMP-13 | 系統 MUST 以複合冪等鍵 `userId + campaignId + idempotencyKey` 防止重複抽獎：Redis SETNX 鎖（第一線）＋ DB `UNIQUE` constraint（最終保證） | Must | ADR-005 |
 | FR-CAMP-14 | 系統 MUST 支援 replay 語意：相同複合鍵的重複請求回傳與第一次完全相同的結果，**不重抽、不重扣庫存、不重扣次數** | Must | ADR-005 |
 | FR-CAMP-15 | 批次抽獎 `count = N` MUST 一次扣除 N 次抽獎次數（僅成功產生結果的請求計次） | Must | ADR-005 |
-| FR-CAMP-16 | 系統 MUST 支援查詢個人抽獎記錄（限本人） | Should | ADR-009 |
 
 **事件發布：**
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-CAMP-17 | 抽中實體獎品時，系統 MUST 發布 `inventory-commit` 事件（含 `drawRecordId`、`prizeId`、`quantity`）至消息佇列 | Must | ADR-006, ADR-007 |
-| FR-CAMP-18 | 系統 SHOULD 發布 `draw-result` 事件（含銘謝惠顧），供報表/營運側消費 | Should | ADR-007 |
+| FR-CAMP-17 | 抽中獎品時，系統 MUST 發布 `inventory-commit` 事件（含 `drawRecordId`、`prizeId`、`quantity`）至消息佇列 | Must | ADR-006, ADR-007 |
 
 ### 2.4 Inventory Service
 
