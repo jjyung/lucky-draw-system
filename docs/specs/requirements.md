@@ -12,7 +12,7 @@
 | [ADR 索引](../adr/README.md) | 架構決策紀錄（ADR-001 ~ ADR-009） |
 | [系統架構總覽](../architecture/overview.md) | C4 架構圖與技術棧矩陣 |
 | [抽獎完整流程](../architecture/draw-flow.md) | 抽獎生命週期與失敗路徑 |
-| [風控與併發設計](../architecture/risk-control.md) | Redis key schema、Lua script、冪等與一致性 |
+| [風控與併發設計](../architecture/risk-control.md) | 併發控制、冪等與一致性 |
 | [部署文件](../architecture/deployment.md) | Cloud Run 拓撲與 go-prod 路徑 |
 
 ---
@@ -75,12 +75,12 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 | 服務 | 職責 |
 |------|------|
-| **API Gateway** | 統一入口、JWT 驗證、限流、路由、Idempotency-Key 檢查 |
-| **Auth Service** | 使用者註冊/登入、JWT (RS256) 簽發、RBAC 權限管理 |
-| **Campaign Service** | 活動與獎品管理、權重抽獎邏輯、冪等控制、發布事件 |
-| **Inventory Service** | 庫存預扣、DB 條件更新（真相來源）、補償與對帳 |
+| **API Gateway** | 統一入口、身份驗證、請求頻率限制、請求路由 |
+| **Auth Service** | 使用者註冊/登入、身份憑證簽發、權限分級 |
+| **Campaign Service** | 活動與獎品管理、抽獎邏輯、防重複抽獎、庫存確認 |
+| **Inventory Service** | 庫存扣減（真相來源）、扣減失敗補償、帳目校對 |
 
-本專案定位為 **POC 輕量起步、預留 prod 彈性**：地端以 docker-compose（PostgreSQL/Redis/RabbitMQ）開發，prod 部署於 GCP Cloud Run + Cloud SQL + Memorystore。
+本專案定位為 **POC 輕量起步、預留 prod 彈性**，技術棧與部署拓撲詳見 [系統架構總覽](../architecture/overview.md) 與 [部署文件](../architecture/deployment.md)。
 
 ---
 
@@ -92,23 +92,23 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-GW-01 | 系統 MUST 對所有進入的 `/api/**` 請求驗證 JWT 簽章（RS256 public key）與過期時間 | Must | ADR-009 |
-| FR-GW-02 | Gateway MUST 將驗證後的 claims（`X-User-Id`、`X-User-Roles`）以 header 轉發給下游 service，並移除原始 `Authorization` header | Must | ADR-009 |
-| FR-GW-03 | 系統 MUST 提供使用者層級與 IP 層級的 Rate Limiting（Redis 計數器），超限回傳 `429 Too Many Requests` | Must | ADR-003, ADR-009 |
-| FR-GW-04 | Gateway MUST 檢查 `POST /campaigns/{id}/draw` 是否帶有 `Idempotency-Key` header，缺少時回傳 `400 Bad Request` | Must | ADR-005 |
-| FR-GW-05 | Gateway MUST 依路由規則將請求轉發至 auth-service / campaign-service / inventory-service | Must | ADR-001, ADR-009 |
-| FR-GW-06 | 公開端點（`POST /auth/login`、`POST /auth/register`、`GET /campaigns`）MUST 不需 token 即可存取 | Must | ADR-009 |
+| FR-GW-01 | 系統 MUST 對所有進入的請求驗證身份憑證的有效性與時效，未通過者拒絕存取 | Must | ADR-009 |
+| FR-GW-02 | Gateway MUST 將驗證後的使用者身份與角色傳遞給下游服務，供其授權判定 | Must | ADR-009 |
+| FR-GW-03 | 系統 MUST 限制單一使用者與來源位址的請求頻率，超限回傳 `429 Too Many Requests` | Must | ADR-003, ADR-009 |
+| FR-GW-04 | Gateway MUST 要求抽獎請求提供冪等識別（Idempotency-Key），缺少時回傳 `400 Bad Request` | Must | ADR-005 |
+| FR-GW-05 | Gateway MUST 作為統一入口，將請求路由至對應的業務服務 | Must | ADR-001, ADR-009 |
+| FR-GW-06 | 登入、註冊、活動查詢等公開功能 MUST 無需身份憑證即可存取 | Must | ADR-009 |
 
 ### 2.2 Auth Service
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
 | FR-AUTH-01 | 系統 MUST 支援使用者註冊（username / email / password） | Must | ADR-009 |
-| FR-AUTH-02 | 系統 MUST 支援使用者登入，成功後簽發 JWT（RS256，claims 含 `sub`、`roles`、`exp`、`iat`、`iss`） | Must | ADR-009 |
-| FR-AUTH-03 | 系統 MUST 以非對稱簽章隔離簽發與驗證：private key 僅 auth-service 持有，public key 透過 endpoint 公開供各 service 驗證 | Must | ADR-009 |
-| FR-AUTH-04 | 系統 SHOULD 支援 token refresh（延長登入有效期） | Should | ADR-009 |
-| FR-AUTH-05 | 系統 MUST 支援 RBAC 權限分級（`ROLE_USER` / `ROLE_ADMIN`），admin API 需 `ROLE_ADMIN` | Must | ADR-009 |
-| FR-AUTH-06 | 使用者密碼 MUST 以不可逆雜湊（如 BCrypt）儲存，不得明文 | Must | ADR-009 |
+| FR-AUTH-02 | 系統 MUST 支援使用者登入，成功後簽發身份憑證，承載使用者識別、角色與有效期 | Must | ADR-009 |
+| FR-AUTH-03 | 系統 MUST 確保身份憑證僅能由身份服務簽發，其他服務只能驗證、不能偽造 | Must | ADR-009 |
+| FR-AUTH-04 | 系統 SHOULD 支援登入有效期的延續（refresh），無需重新登入 | Should | ADR-009 |
+| FR-AUTH-05 | 系統 MUST 支援權限分級（`ROLE_USER` / `ROLE_ADMIN`），管理功能需 `ROLE_ADMIN` | Must | ADR-009 |
+| FR-AUTH-06 | 使用者密碼 MUST 以不可逆方式儲存，任何環節不得明文 | Must | ADR-009 |
 
 ### 2.3 Campaign Service（核心）
 
@@ -119,7 +119,7 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | FR-CAMP-01 | 系統 MUST 支援抽獎活動 CRUD，並具活動狀態機：`DRAFT` → `ACTIVE` → `ENDED` | Must | ADR-002 |
 | FR-CAMP-02 | 系統 MUST 支援每活動配置多個獎品，每個獎品可設定名稱、庫存數量、中獎機率 | Must | ADR-004 |
 | FR-CAMP-03 | 系統 MUST 支援「銘謝惠顧」作為無獎品選項（建模為 `type = THANK_YOU` 的獎品） | Must | ADR-004 |
-| FR-CAMP-04 | 系統 MUST 在配置/更新時驗證所有獎品（含銘謝惠顧）機率總和等於 100%（浮點容差內），否則回傳 `400/422` 且不落庫 | Must | ADR-004 |
+| FR-CAMP-04 | 系統 MUST 在配置/更新時驗證所有獎品（含銘謝惠顧）機率總和等於 100%（浮點容差內），否則回傳 `400/422` 且不生效 | Must | ADR-004 |
 | FR-CAMP-05 | 系統 MUST 支援動態修改獎品內容（名稱、數量、機率），修改後於後續抽獎生效 | Must | ADR-004 |
 | FR-CAMP-06 | 系統 MUST 驗證每個獎品機率介於 `[0, 100]`（非負且不超過 100） | Must | ADR-004 |
 
@@ -128,9 +128,9 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
 | FR-CAMP-07 | 系統 MUST 支援**單次抽獎**（`count = 1`） | Must | ADR-004 |
-| FR-CAMP-08 | 系統 MUST 支援**批次抽獎**（單一請求 `count = N`，伺服端抽 N 次）：單一 Idempotency-Key 對應整批，DB 落 N 筆 `draw_record`，逐筆各自預扣庫存，回傳 N 筆結果 | Must | ADR-004, ADR-005, ADR-006 |
-| FR-CAMP-09 | 系統 MUST 支援**並發多個單次請求**（前端發出 N 個請求、各帶獨立 Idempotency-Key），語意與單次抽獎一致 | Must | ADR-005 |
-| FR-CAMP-10 | 系統 MUST 以權重隨機演算法選取獎品：單一 `random double in [0,100)` 走累計機率區間 | Must | ADR-004 |
+| FR-CAMP-08 | 系統 MUST 支援**批次抽獎**（單一請求抽 N 次）：整批以單一冪等識別對應，回傳 N 筆結果，每筆獨立判定中獎與扣減庫存 | Must | ADR-004, ADR-005, ADR-006 |
+| FR-CAMP-09 | 系統 MUST 支援**並發多個單次請求**（前端發出 N 個請求、各帶獨立冪等識別），語意與單次抽獎一致 | Must | ADR-005 |
+| FR-CAMP-10 | 系統 MUST 依各獎品設定的機率隨機選取中獎結果 | Must | ADR-004 |
 
 **抽獎次數上限與冪等：**
 
@@ -138,43 +138,43 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 |----|----------|--------|----------|
 | FR-CAMP-11 | 系統 MUST 支援每活動自訂**活動期間總額**抽獎次數上限（每個使用者每活動整個週期最多 N 次，非每日重置） | Must | ADR-003, ADR-005 |
 | FR-CAMP-12 | 系統 MUST 在抽獎前檢查個人剩餘抽獎次數，超過上限回傳 `429 Too Many Requests` | Must | ADR-005 |
-| FR-CAMP-13 | 系統 MUST 以複合冪等鍵 `userId + campaignId + idempotencyKey` 防止重複抽獎：Redis SETNX 鎖（第一線）＋ DB `UNIQUE` constraint（最終保證） | Must | ADR-005 |
-| FR-CAMP-14 | 系統 MUST 支援 replay 語意：相同複合鍵的重複請求回傳與第一次完全相同的結果，**不重抽、不重扣庫存、不重扣次數** | Must | ADR-005 |
+| FR-CAMP-13 | 系統 MUST 防止重複抽獎：同一抽獎請求重複送出時，只產生一次中獎結果、只扣除一次次數 | Must | ADR-005 |
+| FR-CAMP-14 | 系統 MUST 支援 replay 語意：相同請求重複送出時，回傳與第一次完全相同的結果，**不重抽、不重扣庫存、不重扣次數** | Must | ADR-005 |
 | FR-CAMP-15 | 批次抽獎 `count = N` MUST 一次扣除 N 次抽獎次數（僅成功產生結果的請求計次） | Must | ADR-005 |
 
 **防超抽（抽獎路徑）：**
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-CAMP-18 | 抽中獎品時，系統 MUST 以 Redis Lua script 原子預扣庫存（檢查 `> 0` 後 `DECR`），杜絕 read-check-act 競態 | Must | ADR-003, ADR-006 |
-| FR-CAMP-19 | 庫存不足時（Redis 預扣回傳 0），抽獎結果 MUST 降級為銘謝惠顧（不重抽、不發布 inventory-commit） | Must | ADR-006 |
+| FR-CAMP-18 | 抽中獎品時，系統 MUST 先確認該獎品庫存是否足夠；足夠才確認中獎，不足則視為未中獎 | Must | ADR-003, ADR-006 |
+| FR-CAMP-19 | 庫存不足時，抽獎結果 MUST 降級為銘謝惠顧（不重抽） | Must | ADR-006 |
 
 **事件發布：**
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-CAMP-17 | 抽中獎品時，系統 MUST 發布 `inventory-commit` 事件（含 `drawRecordId`、`prizeId`、`quantity`）至消息佇列 | Must | ADR-006, ADR-007 |
+| FR-CAMP-17 | 抽中獎品時，系統 MUST 通知庫存服務執行庫存扣減 | Must | ADR-006, ADR-007 |
 
 ### 2.4 Inventory Service
 
-> 註：抽獎路徑的「熱點庫存預扣（Redis Lua）」與「庫存不足降級銘謝惠顧」屬 campaign-service 職責（見 FR-CAMP-18 / FR-CAMP-19）。inventory-service 職責為**庫存真相來源**：消費 `inventory-commit`、執行 DB 條件更新、冪等、補償與對帳。
+> 註：抽獎路徑的「庫存確認」與「庫存不足降級銘謝惠顧」屬 campaign-service 職責（見 FR-CAMP-18 / FR-CAMP-19）。inventory-service 職責為**庫存真相來源**：執行庫存扣減、冪等、扣減失敗補償與帳目校對。
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
-| FR-INV-01 | 系統 MUST 消費 `inventory-commit` 事件，並以原子條件更新寫回 DB 真相來源：`UPDATE inventory SET stock = stock - 1 WHERE id = ? AND stock > 0` | Must | ADR-006, ADR-007 |
-| FR-INV-02 | 系統 MUST 保證**實際發放獎品數絕不超過庫存**（DB 條件更新為最終保證） | Must | ADR-006 |
-| FR-INV-03 | DB 條件更新影響 0 列時，系統 MUST 執行補償（回滾中獎結果、修正 Redis counter、發出 alert） | Must | ADR-006 |
-| FR-INV-04 | consumer MUST 冪等（依 `drawRecordId` 去重），避免消息重複投遞造成重複扣減 | Must | ADR-006, ADR-007 |
-| FR-INV-05 | 系統 SHOULD 提供定期對帳 job（以 DB 庫存校正 Redis counter、回收超時預留） | Should | ADR-006 |
+| FR-INV-01 | 系統 MUST 在收到扣減通知後執行庫存扣減，且扣減不得使庫存為負 | Must | ADR-006, ADR-007 |
+| FR-INV-02 | 系統 MUST 保證**實際發放獎品數絕不超過庫存** | Must | ADR-006 |
+| FR-INV-03 | 庫存扣減發現庫存已不足時，系統 MUST 撤銷該次中獎結果並發出告警 | Must | ADR-006 |
+| FR-INV-04 | 系統 MUST 確保同一筆中獎只扣減一次庫存，重複通知不造成重複扣減 | Must | ADR-006, ADR-007 |
+| FR-INV-05 | 系統 SHOULD 定期校對庫存帳目，確保帳面一致 | Should | ADR-006 |
 
 ### 2.5 交錯需求 (Cross-cutting)
 
 | ID | 需求描述 | 優先級 | 對應 ADR |
 |----|----------|--------|----------|
 | FR-X-01 | 系統 MUST 提供完整的錯誤流程處理與輸入驗證，明確定義 `400` / `401` / `403` / `404` / `409` / `429` / `500` 語意 | Must | ADR-005, ADR-009 |
-| FR-X-02 | 批次抽獎的整批副作用（次數扣除、事件發布）MUST 僅執行一次（由整批的單一 Idempotency-Key 保護） | Must | ADR-005 |
+| FR-X-02 | 批次抽獎的整批副作用（次數扣除、庫存扣減）MUST 僅執行一次（由整批的單一冪等識別保護） | Must | ADR-005 |
 | FR-X-03 | 前後端分離，後端以 RESTful API 風格提供清晰路由與參數說明 | Must | ADR-009 |
-| FR-X-04 | 所有 API MUST 提供文件（OpenAPI 3.0 / Swagger） | Must | — |
+| FR-X-04 | 所有 API MUST 提供文件說明 | Must | — |
 
 ---
 
@@ -182,14 +182,14 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 | ID | 需求 | 說明 | 優先級 | 對應 ADR |
 |----|------|------|--------|----------|
-| NFR-01 | 高可用 (HA) | 多 instance 部署、故障隔離；Cloud SQL / Memorystore 啟用 HA 與 failover | Must | ADR-008 |
-| NFR-02 | 水平擴展 | 各 service 獨立縮放，支援快速橫向擴充（抽獎高峰放大 campaign/inventory） | Must | ADR-001, ADR-008 |
-| NFR-03 | 高併發一致性 | Redis 加速層（低延遲）＋ DB 真相層（條件更新）＋ 補償對帳，確保事務一致性與最終收斂 | Must | ADR-003, ADR-006 |
-| NFR-04 | 多環境配置 | **資料來源 (DataSource)、連線池參數等 MUST 可依環境變數切換**，支援 dev（SQLite/PostgreSQL）/ prod（Cloud SQL）多環境部署 | Must | ADR-002, ADR-008 |
-| NFR-05 | 安全性 | JWT RS256、Secret Manager 管理機密、最小權限、defense in depth（Gateway + service 雙層驗證） | Must | ADR-009 |
-| NFR-06 | 可觀察性 | 各 service 標準 logging、broker backlog 監控、對帳告警 | Should | ADR-006, ADR-008 |
-| NFR-07 | 測試覆蓋 | 單元測試模擬機率分布、邊界條件與錯誤場景；JUnit 5 + Mockito + Testcontainers | Must | — |
-| NFR-08 | API 文件與風格 | 前後端分離、RESTful API、清晰路由與參數說明、OpenAPI 3.0 文件 | Must | ADR-009 |
+| NFR-01 | 高可用 (HA) | 多實例部署、故障隔離，單一節點故障不影響整體可用性 | Must | ADR-008 |
+| NFR-02 | 水平擴展 | 各服務獨立擴展，支援快速橫向擴充，以應對抽獎高峰流量 | Must | ADR-001, ADR-008 |
+| NFR-03 | 高併發一致性 | 高併發場景下仍能確保庫存扣減與抽獎次數計數的正確性，並可收斂至一致 | Must | ADR-003, ADR-006 |
+| NFR-04 | 多環境配置 | **資料來源 (DataSource)、連線池參數等 MUST 可依環境變數切換**，支援多環境部署 | Must | ADR-002, ADR-008 |
+| NFR-05 | 安全性 | 身份憑證不可偽造、機密安全保管、最小權限、多層防護（邊界驗證 + 各服務獨立驗證） | Must | ADR-009 |
+| NFR-06 | 可觀察性 | 各服務具備運作記錄與異常告警能力 | Should | ADR-006, ADR-008 |
+| NFR-07 | 測試覆蓋 | 單元測試模擬機率分布、邊界條件與錯誤場景 | Must | — |
+| NFR-08 | API 文件與風格 | 前後端分離、RESTful API、清晰路由與參數說明、API 文件 | Must | ADR-009 |
 
 ---
 
@@ -199,8 +199,8 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 
 | 項目 | 說明 |
 |------|------|
-| OAuth2 / OIDC 完整授權流程 | 簡化版的「Auth Service 簽發 JWT」即可，完整 Authorization Server 留待演化（ADR-009） |
-| JWT 主動撤銷（blacklist） | 以短 TTL + `token_version` 欄位暫代（ADR-009） |
+| OAuth2 / OIDC 完整授權流程 | 簡化版的「身份服務簽發憑證」即可，完整授權伺服器留待演化（ADR-009） |
+| 身份憑證主動撤銷 | 憑證到期前不主動失效，以短有效期收斂風險（ADR-009） |
 | 金流 / 發券系統整合 | 中獎發放通知為未來整合項目 |
 | 前端應用實作 | 本專案聚焦後端微服務，前端分離但由另一專案實作 |
 | 實際 prod 部署 | 僅保留架構彈性與 go-prod 路徑（ADR-008），不實際部署 GCP |
@@ -238,12 +238,12 @@ lucky-draw-system 是一個**電商轉盤抽獎微服務平台**，以 Java 21 +
 | FR-GW-* / FR-AUTH-* / FR-CAMP-* / FR-INV-* | `docs/specs/<service>/` per-service contract |
 | API 路由與參數 | `docs/api/` OpenAPI 3.0 規格 |
 | Table Schema | `docs/db/`（DDL + DML + ER） |
-| 測試策略 | 各 service 單元/整合測試（JUnit 5 + Testcontainers） |
+| 測試策略 | 各服務單元/整合測試 |
 
 ---
 
 ## 6. 備註 (Notes)
 
-1. **抽獎次數上限維度**：依最新需求確認，個人抽獎次數上限為**活動期間總額**（非每日）。既有 ADR-003 的 key schema、ADR-005、`docs/architecture/risk-control.md` §2.2、`docs/architecture/draw-flow.md` 中提及「當日/每日」次數的內容已同步修訂為「活動期間總額」（key 改為 `draw_count:{userId}:{campaignId}`，TTL 對齊活動結束時間）。
+1. **抽獎次數上限維度**：依最新需求確認，個人抽獎次數上限為**活動期間總額**（非每日）。既有 ADR-003 的 key schema、ADR-005、`docs/architecture/risk-control.md` §2.2、`docs/architecture/draw-flow.md` 中提及「當日/每日」次數的內容已同步修訂為「活動期間總額」。
 
-2. **批次抽獎語意**：`count = N` 的批次抽獎為「單一請求、伺服端 N 次獨立抽選」，整批以單一 Idempotency-Key 保護；與「並發多個單次請求」為兩種並存模式，兩者都需支援。
+2. **批次抽獎語意**：`count = N` 的批次抽獎為「單一請求、伺服端 N 次獨立抽選」，整批以單一冪等識別保護；與「並發多個單次請求」為兩種並存模式，兩者都需支援。
