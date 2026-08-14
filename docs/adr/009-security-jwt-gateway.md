@@ -1,6 +1,7 @@
 # ADR-009: 安全機制 — JWT + Gateway 驗證 (Security: JWT with RS256)
 
 **Date:** 2026-08-13
+**Updated:** 2026-08-14 — public key 公開採 JWKS（`/.well-known/jwks.json`）；授權表移除個人抽獎記錄、活動管理改 resource-oriented 路徑 + role 授權（統一 `/api/v1` 前綴）。
 **Status:** Accepted
 
 ## Context
@@ -19,7 +20,7 @@
 
 - **auth-service** 負責登入（login / register）與 token 簽發。
 - 使用 **RS256**：auth-service 持有 **private key** 簽章；各 service 只持有 **public key** 驗章。
-- private key 存放於 **GCP Secret Manager**（僅 auth-service 可讀，見 ADR-008）；public key 透過 `/.well-known/jwks.json` 或 `/api/v1/auth/public-key` endpoint 公開。
+- private key 存放於 **GCP Secret Manager**（僅 auth-service 可讀，見 ADR-008）；public key 透過 **`/.well-known/jwks.json`（JWKS）** endpoint 公開（支援多 key 輪替）。
 - JWT claims 包含：`sub`（userId）、`roles`（如 `ROLE_USER` / `ROLE_ADMIN`）、`exp` / `iat` / `iss`。
 
 ### 2. Gateway 層：驗證 + 路由 + 限流
@@ -40,11 +41,10 @@
 
 | Endpoint | 角色 | 說明 |
 |----------|------|------|
-| `POST /api/v1/auth/login`, `/register` | PUBLIC | 登入 / 註冊 |
+| `POST /api/v1/auth/register`, `POST /api/v1/auth/login` | PUBLIC | 註冊 / 登入 |
 | `GET /api/v1/campaigns` | PUBLIC | 活動列表（不含管理欄位） |
 | `POST /api/v1/campaigns/{id}/draw` | `ROLE_USER`（需 token） | 抽獎（另需 Idempotency-Key，見 ADR-005） |
-| `GET /api/v1/users/me/draw-records` | `ROLE_USER`（限本人） | 個人抽獎記錄 |
-| `POST/PUT /api/v1/admin/campaigns`、機率配置、庫存設定 | `ROLE_ADMIN` | 活動與獎品管理（需驗證 `X-User-Roles` / claims 含 ADMIN） |
+| `POST/PUT /api/v1/campaigns` 與其子資源（獎品/機率配置、狀態管理） | `ROLE_ADMIN` | 活動與獎品管理（resource-oriented 路徑，以 claims 含 ADMIN 授權） |
 
 - 授權判定以 **JWT claims 的 roles** 為準；service 內以 Spring Security method security（`@PreAuthorize("hasRole('ADMIN')")`）落實。
 

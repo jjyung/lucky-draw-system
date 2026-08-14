@@ -1,6 +1,7 @@
 # ADR-005: 防重複抽獎與冪等性 (Anti-Double-Draw & Idempotency)
 
 **Date:** 2026-08-13
+**Updated:** 2026-08-14 — 抽獎端點統一 `/api/v1` 前綴；首次抽獎與 replay 統一回傳 `200 OK`。
 **Status:** Accepted
 
 ## Context
@@ -11,7 +12,7 @@
 - **併發重入**：使用者連點、或 mobile app 同時發出兩次請求。
 - **重複扣次數 / 重複出獎**：同一使用者因重送而抽到兩次獎、被扣兩次抽獎次數，是營運上不可接受的事故。
 
-REST `POST /campaigns/{id}/draw` 需要一個讓 client 可以安全重試的機制。常見解法是 **Idempotency-Key**（如 Stripe 的 pattern）。
+REST `POST /api/v1/campaigns/{id}/draw` 需要一個讓 client 可以安全重試的機制。常見解法是 **Idempotency-Key**（如 Stripe 的 pattern）。
 
 ## Decision
 
@@ -19,7 +20,7 @@ REST `POST /campaigns/{id}/draw` 需要一個讓 client 可以安全重試的機
 
 ### 1. Client 端：Idempotency-Key Header
 
-- Client 在每次 `POST /campaigns/{id}/draw` 時必須提供 **`Idempotency-Key: <UUID>`** header。
+- Client 在每次 `POST /api/v1/campaigns/{id}/draw` 時必須提供 **`Idempotency-Key: <UUID>`** header。
 - 同一「物理動作」（一次使用者點擊）的所有重試使用**同一個 UUID**；新的一次點擊使用新 UUID。
 - Gateway 對缺少 header 的 draw 請求回傳 `400 Bad Request`。
 
@@ -56,7 +57,7 @@ ALTER TABLE draw_records
 ### 4. Replay 語意：回傳原始結果
 
 - 抽獎成功後，**draw_record 中保存結果快照**（獎品 ID、獎品名稱、結果型別），並以 `Idempotency-Key` 為索引可查。
-- 當收到相同複合鍵的請求且鎖不存在（代表已處理完成）→ 查詢既有 `draw_record`，**回傳與第一次完全相同的結果**（HTTP 200 + 相同 response body，非 201）。
+- 當收到相同複合鍵的請求且鎖不存在（代表已處理完成）→ 查詢既有 `draw_record`，**回傳與第一次完全相同的結果**（HTTP 200 + 相同 response body）。抽獎成功一律回傳 `200 OK`（首次與 replay 皆 200），replay 的 body 與首次完全一致，client 無法以 status 區分首次與重放。
 - **不重抽、不重扣庫存、不重扣次數**。對 client 而言，replay 是透明的「同一個結果」。
 
 ### 5. 個人抽獎次數上限的判定

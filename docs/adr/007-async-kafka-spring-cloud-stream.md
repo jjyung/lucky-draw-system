@@ -35,6 +35,7 @@
 |---------|------|------|----------------|--------|--------|
 | `draw-result` | publish / subscribe | 抽獎結果（中獎 / 銘謝惠顧） | `DrawResultEvent` (drawRecordId) | campaign-service | 營運側/報表消費者（可選） |
 | `inventory-commit` | publish / subscribe | 庫存寫回請求 | `InventoryCommitEvent` (drawRecordId, prizeId, quantity) | campaign-service | inventory-service |
+| `prize-stock-configured` | publish / subscribe | 庫存初始/差值同步 | `PrizeStockConfiguredEvent` (prizeId, oldQuantity, newQuantity, configVersion) | campaign-service | inventory-service |
 
 - Event payload 為**共用 DTO**（放在 `common` module，見 ADR-001），內容以 **`draw_record_id` 為冪等鍵**（見 ADR-005 / 006）。
 - 每個 service 自己的 consumer 屬於獨立的 consumer group，避免多 instance 重複消費。
