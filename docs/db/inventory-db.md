@@ -39,11 +39,12 @@
 -- prize_id 為跨 DB 邏輯引用（指向 campaign.prizes.id），無跨 DB FK
 -- -------------------------------------------------------------
 CREATE TABLE inventory (
-    id         BIGSERIAL   PRIMARY KEY,
-    prize_id   BIGINT      NOT NULL,   -- 邏輯引用 campaign.prizes.id（無跨 DB FK）
-    stock      INT         NOT NULL,   -- 剩餘可出貨數量（真相），扣減保證 >= 0
-    version    INT         NOT NULL DEFAULT 0,   -- 樂觀鎖（optimistic lock）
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                  BIGSERIAL   PRIMARY KEY,
+    prize_id            BIGINT      NOT NULL,   -- 邏輯引用 campaign.prizes.id（無跨 DB FK）
+    stock               INT         NOT NULL,   -- 剩餘可出貨數量（真相），保證 >= 0
+    version             INT         NOT NULL DEFAULT 0,   -- 樂觀鎖（optimistic lock）
+    last_config_version INT         NOT NULL DEFAULT 0,   -- 最近套用的獎品 quantity 配置版本（冪等/排序，ADR-010）
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_inventory_prize_id UNIQUE (prize_id),
     CONSTRAINT chk_inventory_stock   CHECK (stock >= 0)
@@ -51,8 +52,9 @@ CREATE TABLE inventory (
 
 COMMENT ON TABLE  inventory           IS '庫存真相來源（每個 PRIZE 獎品一列；THANK_YOU 無此列）';
 COMMENT ON COLUMN inventory.prize_id  IS '對應獎品識別（邏輯引用 campaign.prizes.id，UNIQUE）';
-COMMENT ON COLUMN inventory.stock     IS '剩餘可出貨數量（唯一真相）；只能扣減，不得為負';
+COMMENT ON COLUMN inventory.stock     IS '剩餘可出貨數量（唯一真相）；扣減單向，但可因獎品 quantity 配置同步而增減（ADR-010），不得為負';
 COMMENT ON COLUMN inventory.version   IS '樂觀鎖版本號（app 層條件更新輔助，ADR-003 替代方案保留）';
+COMMENT ON COLUMN inventory.last_config_version IS '最近套用的 prize-stock-configured 版本；用於冪等去重與亂序排序（ADR-010）';
 COMMENT ON COLUMN inventory.updated_at IS '最後異動時間（UTC）';
 
 -- -------------------------------------------------------------
@@ -99,6 +101,7 @@ CREATE INDEX idx_reservations_status_reserved_at ON reservations (status, reserv
 | `stock`/`remaining` | `inventory.stock` | `INT` | No | NOT NULL, `CHECK(>= 0)` | — |
 | （新增） | `inventory.id` | `BIGSERIAL` | No | PK | PK |
 | （新增，樂觀鎖） | `inventory.version` | `INT` | No | NOT NULL, DEFAULT 0 | — |
+| （新增，配置版本） | `inventory.last_config_version` | `INT` | No | NOT NULL, DEFAULT 0 | — |
 | （新增） | `inventory.updated_at` | `TIMESTAMPTZ` | No | DEFAULT now() | — |
 | `draw_record_id` | `reservations.draw_record_id` | `BIGINT` | No | `UNIQUE`, NOT NULL（冪等鍵） | `uq_reservations_draw_record_id` |
 | `prize_id` | `reservations.prize_id` | `BIGINT` | No | NOT NULL（邏輯引用） | `idx_reservations_prize_id` |
@@ -107,7 +110,7 @@ CREATE INDEX idx_reservations_status_reserved_at ON reservations (status, reserv
 | 確認時間 | `reservations.reserved_at` | `TIMESTAMPTZ` | No | NOT NULL, DEFAULT now() | 複合 `(status, reserved_at)` |
 | （新增，完成時間） | `reservations.committed_at` | `TIMESTAMPTZ` | **Yes** | `CHECK` 與 status 對齊 | — |
 
-> **`stock` 語意**：SA §5.2 將「剩餘」與「初始值」並列（`stock`/`remaining`）。本設計 `inventory.stock` 即為「剩餘可出貨數量（真相）」；**初始值**由 campaign-service 的獎品配置（`prizes.stock`）於獎品建立時同步寫入（見 dml-seed.md），之後只遞減。
+> **`stock` 語意**：SA §5.2 將「剩餘」與「初始值」並列（`stock`/`remaining`）。本設計 `inventory.stock` 即為「剩餘可出貨數量（真相）」；**初始值**由 campaign-service 的獎品配置（`prizes.quantity`）於獎品建立時同步寫入；其後 `quantity` 修改以差值（delta）同步調整 `stock`（ADR-010），扣減路徑仍單向。
 
 ### 3.2 約束與索引摘要
 
@@ -170,6 +173,27 @@ RESERVED ──► COMMITTED  (扣減成功，終態)
 - campaign-service SA §4.2 註記：`VOID`（撤銷）是 inventory-service 補償語意，**非** campaign DB 的 draw_record result_type。draw_record 的 result_type 只有 `WIN`/`THANK_YOU`。
 - 依 ADR-002（無跨 DB 寫入），inventory-service **不能**直接改 campaign DB 的 draw_record。因此補償的記錄落點是 **`reservations.status = 'REVERSED'`**（本 DB），campaign-service 側的中獎結果撤銷語意由事件/告警通知營運處理（SA inventory UC-2 明確：本服務只負責「撤銷 + 校正 + 告警」，不跨 DB 回寫）。
 
+### 3.6 庫存配置同步：quantity 差值調整（ADR-010）
+
+獎品 `quantity` 建立/修改時，campaign-service 發布 `prize-stock-configured`（ADR-010），inventory consumer 冪等套用（以 `last_config_version` 去重與排序）：
+
+```sql
+-- 首次建置（列不存在）：INSERT inventory (prize_id, stock, last_config_version) VALUES (?, newQuantity, ?)
+-- 已有列：條件更新，delta = newQuantity - oldQuantity
+UPDATE inventory
+   SET stock = stock + :delta,
+       version = version + 1,
+       last_config_version = :configVersion,
+       updated_at = now()
+ WHERE prize_id = :prizeId
+   AND stock + :delta >= 0;
+-- rowcount = 1 → 套用成功（增加 = 補貨、減少 = 縮減）
+-- rowcount = 0 → 新總量 < 已發放數 → 拒絕，不套用（記錄衝突 + 告警，由對帳收斂）
+```
+
+- consumer 僅在 `incomingConfigVersion > last_config_version` 時套用；相同版本重投 → 跳過（at-least-once 冪等，ADR-007）；較低版本 → 亂序/過期 → 跳過。
+- `WHERE stock + :delta >= 0` 等價於「新總量 ≥ 已發放數」（因 `stock = oldQuantity − issued`），封住超發；`CHECK(stock >= 0)` 為最後一道 DB 防線。
+
 ---
 
 ## 4. dev profile 差異（SQLite / H2）
@@ -198,6 +222,7 @@ erDiagram
         bigint prize_id UK
         int stock
         int version
+        int last_config_version
         timestamptz updated_at
     }
     RESERVATIONS {

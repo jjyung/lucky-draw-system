@@ -256,7 +256,9 @@ DRAFT ──► ACTIVE ──► ENDED (終態)
 | `name` | 獎品名稱 | 是 | 非空字串 | ADMIN 輸入 | internal |
 | `type` | 獎品型別 | 是 | `PRIZE` / `THANK_YOU` | ADMIN 輸入 | internal |
 | `probability` | 中獎機率（百分比）；含銘謝惠顧在內，全體總和 = 100% | 是 | `[0, 100]`；全體總和 = 100%（浮點容差內） | ADMIN 輸入 | sensitive（營運參數） |
-| `stock` / `quantity` | 可發放數量（銘謝惠顧不適用，視為無限） | 是（`PRIZE`） | 非負整數；`THANK_YOU` 不適用 | ADMIN 初始配置；實際庫存真相在 inventory-service | sensitive（營運） |
+| `stock` / `quantity` | 可發放數量（銘謝惠顧不適用，視為無限） | 是（`PRIZE`） | 非負整數；`THANK_YOU` 不適用 | ADMIN 初始配置；為庫存 config 真相，同步至 inventory-service（ADR-010） | sensitive（營運） |
+
+> **語意註記**：`quantity` 是庫存配置的 **config 真相**。其初始值與後續動態修改，由 campaign-service 發布 `prize-stock-configured` event 同步至 inventory-service，作為庫存真相的初始值與差值調整依據（ADR-010）；實際剩餘庫存真相仍在 inventory-service。
 
 ### 5.3 抽獎記錄 (draw_record)
 
@@ -266,7 +268,7 @@ DRAFT ──► ACTIVE ──► ENDED (終態)
 | `campaign_id` | 抽獎所屬活動 | 是 | 有效活動識別 | 由請求路徑決定（伺服端不信任 client） | internal |
 | `idempotency_key` | 冪等識別中 client 提供之部分（一次點擊一個識別） | 是 | 非空識別 | Client 提供（Gateway 強制存在） | internal |
 | `result_type` | 本次抽獎結果型別 | 是 | `WIN` / `THANK_YOU` | campaign-service 抽獎邏輯（伺服端決定） | internal |
-| `prize_id` | 中獎獎品識別（銘謝惠顧時指向 `THANK_YOU` 獎品） | 條件 | 有效獎品識別 | 抽獎邏輯結果 | internal |
+| `prize_id` | 中獎獎品識別（銘謝惠顧 `THANK_YOU` 時為 `null`，不掛獎品參考） | 條件（`WIN` 時必填） | 有效獎品識別（`THANK_YOU` 時 `null`） | 抽獎邏輯結果 | internal |
 | 抽獎次數 (draw count) | 使用者於活動期間之**累計**抽獎次數（派生計數，維度 = 活動） | 派生 | 非負整數 ≤ `draw_limit` | campaign-service 計數；抽獎記錄為稽核真相 | personal |
 
 > **語意註記**：抽獎次數是「使用者 × 活動」維度的派生計數，不是單一抽獎記錄的欄位；抽獎記錄是該計數的稽核證據（每筆成功抽獎對應 +1，批次 +N）。
