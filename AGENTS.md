@@ -225,3 +225,28 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 | **牴觸檢查** | 我的描述是否削弱或改寫了原文的約束？ | 牴觸 → 以原文為準，回頭改規格，不在 code/文件裡硬拗 |
 
 > **最小需求**：目標是「系統的完整性與機制健全」，不是堆疊功能。寧可小而有料，不可大而空泛。**快速開發**：先做天條明列的，其餘留待使用者指示。
+
+---
+
+## 11. 實作契約索引 (Implementation Contract Index)
+
+> 契約落地為實作的**中間層**：每支 API 有一份「實作方式」文件，加上每服務 API 總表與全系統錯誤碼總表，作為 Backend 實作與 QA 驗證的索引。**任何 agent 動筆實作前，先查這裡。**
+
+### 11.1 檔案位置
+
+| 交付物 | 位置 | 命名 |
+|--------|------|------|
+| API 實作方式（每支 API 一份） | `docs/api/impl/<api-id>.md` | 以 **API ID** 為檔名（如 `campaign-draws-001.md`） |
+| 每服務 API List 總表 | `docs/api/api-list/<service>.md` | `auth-service.md` / `campaign-service.md` / `inventory-service.md` / `gateway-service.md` |
+| 錯誤碼總表（全系統唯一） | `docs/api/error-list.md` | 固定單一檔 |
+| 實作方式模板 | `docs/templates/api-template.md` | 固定單一檔 |
+
+### 11.2 實作方式模板（每支 API 必備）
+
+依 `docs/templates/api-template.md`：`API-ID` + `API-NAME` → 描述大意 → 流程圖（mermaid 循序圖）→ 邏輯（逐步驟 + 例外處理 + 錯誤碼）→ 錯誤代碼清單（table）。
+
+### 11.3 紀律
+
+- **錯誤碼只從 `docs/api/error-list.md` 引用**，不得在各 API 文件自造語意重複的 code。
+- **API ID 是唯一鍵**：OpenAPI `operationId`、`docs/api/impl/` 檔名、`docs/api/api-list/` 索引、追溯矩陣，四處必須一致。
+- 實作中若發現 API 契約需變更 → 先回寫 OpenAPI + 本索引，再改 code（§7.3）。

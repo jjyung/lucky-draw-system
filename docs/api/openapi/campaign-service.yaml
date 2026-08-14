@@ -1,0 +1,1397 @@
+openapi: 3.0.3
+
+info:
+  title: campaign-service — REST 契約
+  version: 1.0.0
+  description: |
+    ## 定位：活動／獎品管理與抽獎（REST）
+
+    campaign-service 提供**抽獎活動生命週期管理（建立/編輯/狀態機）、獎品與機率配置（含銘謝惠顧、
+    總和 100% 驗證）、權重隨機抽獎（單次/批次）**三項能力，對應 SA（`docs/specs/campaign-service/README.md`）
+    之 UC-1 ~ UC-5，以及 `requirements.md` 的 `FR-CAMP-01 ~ FR-CAMP-19`、`FR-X-01/02`。
+
+    本文件只涵蓋 `docs/api/README.md` §3 中列出的 7 條 **campaign-*** API（即 API ID 清單的 campaign 段）：
+    `campaign-campaigns-001` ~ `005`、`campaign-prizes-001`、`campaign-draws-001`。
+    其餘 `auth-*` / `inventory-*` / `gateway-*` 契約見對應 YAML，不在本文件範圍。
+
+    ## 統一規約（詳見 `docs/api/README.md` §2）
+
+    - **回應 envelope（成功與失敗同一結構）**：`{ code, message, data }`。
+      `code` 為**數字錯誤碼字串**（成功 `"00000"`）；`message` 人類可讀；`data` 承載資源（失敗為 `null`）。
+    - **錯誤碼與 HTTP status 對映**：見 `docs/api/README.md` §2.3。campaign 段錯誤碼：
+      `A0301`(404 活動不存在/非 ACTIVE)、`A0302`(409 狀態衝突)、`A0303/A0304/A0305`(422 機率總和≠100%/越界/缺 THANK_YOU)、
+      `A0306`(429 次數超限)、`A0307`(409 冪等衝突)、`A0400`(403)。`A0000` 為一般用戶端錯誤（400）。
+    - **auth scheme**：JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。
+      管理端點需 `ROLE_ADMIN`、抽獎需 `ROLE_USER`，列表/詳情為 PUBLIC。越權回 `403`（`A0400`）。
+    - **Idempotency-Key（抽獎路徑，ADR-005）**：`POST /campaigns/{campaignId}/draw` 必須帶
+      `Idempotency-Key: <UUID>` header；複合冪等鍵 = `userId + campaignId + idempotencyKey`。
+      同鍵重送（replay）回傳與首次**逐位元一致**的結果（皆 `200 OK`），不重抽、不重扣庫存、不重扣次數。
+    - **Model 命名**：`{HttpMethod}{Resource}RequestDTO/ResponseDTO`（《OpenAPI Contract Rules》），
+      單複數依語意；資源承載以 `*ResourceDTO` 命名；`operationId` 與 API ID 對照以 `docs/api/README.md` §3 為準。
+
+    ## 對外入口
+
+    對外入口為 **API Gateway**（ADR-009）；`/api/v1` 前綴由 Gateway 對映，
+    campaign-service 本體路徑以 `servers.url = /api/v1` 呈現（相對 path 不含前綴，
+    與 `auth-service.yaml` 一致）。
+
+    ## 關鍵假設（與 SA/README 之取捨）
+
+    1. **列表/詳情不暴露管理欄位**：`getCampaigns`（列表）與 `getCampaignById`（詳情）為 PUBLIC，
+       均**不暴露 `drawLimit`**（管理欄位）；詳情的獎品清單亦不暴露 `probability`/`quantity`
+       （SA §5.2 標記為敏感營運參數），僅回 `id/name/type`。
+    2. **抽獎結果 `prize` 對銘謝惠顧為 `null`**：對齊 `campaign-db.md` §3.3 SD 決策（`THANK_YOU` 時
+       `prize_id = NULL`）；SA §5.3 已同步修訂為「THANK_YOU 時 null」。
+    3. **成功碼**：`postCampaigns`（建立）回 `201 Created`，其餘（含抽獎 replay）一律 `200`。
+       draw 的 replay 與首次皆 `200`、body 逐位元一致（ADR-005）。
+    4. **`A0303/A0304/A0305` → `422`**（結構合法但違反業務不變量的語意驗證）；結構性輸入錯誤 → `400`（`A0000`）。
+    5. **PUT prizes 為整批覆蓋**：請求體獎品不帶 `id`（系統重建），回應回帶 `id`；成功即發布
+       `prize-stock-configured`（ADR-010）。
+
+servers:
+  - url: /api/v1
+    description: |
+      示意前綴。對外實際入口為 API Gateway（ADR-009），`/api/v1` 為 Gateway 對外 surface 前綴；
+      campaign-service 內部路徑亦掛於此前綴下，本文件以 `url: /api/v1` + 相對 path 表示。
+
+tags:
+  - name: campaigns
+    description: 活動 CRUD 與狀態機（UC-1、UC-3）
+  - name: prizes
+    description: 獎品與機率配置（UC-2）
+  - name: draws
+    description: 抽獎（單次／批次，UC-4、UC-5）
+
+paths:
+  /campaigns:
+    get:
+      tags: [campaigns]
+      summary: 活動列表（不含管理欄位）[campaign-campaigns-001]
+      description: |
+        回傳活動列表（PUBLIC，不需登入）。POC 階段不分頁（活動數小），直接回全量
+        （`docs/api/README.md` §2.8；大量時預留 cursor 演化）。
+
+        - **不含管理欄位**：不暴露 `drawLimit`（每使用者活動期間總抽獎次數上限，屬營運管理語意，
+          亦避免洩漏控管參數）。僅回 `id/name/status/startTime/endTime`。
+        - 排序：預設依 `startTime` 或建立時間（SD 實作細節），契約不強制。
+
+        **Traceability:** `FR-CAMP-01`（查）/ `FR-GW-06`
+      operationId: getCampaigns
+      security: []          # PUBLIC（不需登入）
+      responses:
+        '200':
+          description: 成功，回傳活動列表（不含 drawLimit）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCampaignsResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  - id: 1
+                    name: "新春抽獎"
+                    status: "ACTIVE"
+                    startTime: "2026-02-01T00:00:00Z"
+                    endTime: "2026-02-15T23:59:59Z"
+                  - id: 2
+                    name: "週年慶抽獎"
+                    status: "DRAFT"
+                    startTime: "2026-03-01T00:00:00Z"
+                    endTime: "2026-03-31T23:59:59Z"
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /campaigns/{campaignId}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    get:
+      tags: [campaigns]
+      summary: 活動詳情 [campaign-campaigns-002]
+      description: |
+        回傳單一活動詳情（PUBLIC，不需登入）。
+
+        - 與列表相同，**不暴露 `drawLimit`**（管理欄位）。
+        - **可含獎品列表**（供 client 抽獎前展示「可贏得什麼」）：獎品清單僅回
+          `id/name/type`，**不暴露 `probability`/`quantity`**（SA §5.2 敏感營運參數）。
+        - 活動不存在 → `404`（`A0301`）。
+
+        **Traceability:** `FR-CAMP-01`（查）
+      operationId: getCampaignById
+      security: []          # PUBLIC（不需登入）
+      responses:
+        '200':
+          description: 成功，回傳活動詳情（含獎品清單，不含敏感欄位）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCampaignByIdResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 1
+                  name: "新春抽獎"
+                  status: "ACTIVE"
+                  startTime: "2026-02-01T00:00:00Z"
+                  endTime: "2026-02-15T23:59:59Z"
+                  prizes:
+                    - id: 11
+                      name: "iPhone 16"
+                      type: "PRIZE"
+                    - id: 12
+                      name: "折價券 100 元"
+                      type: "PRIZE"
+                    - id: 13
+                      name: "銘謝惠顧"
+                      type: "THANK_YOU"
+        '404':
+          description: 活動不存在 → `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+    post:
+      tags: [campaigns]
+      summary: 建立活動 [campaign-campaigns-003]
+      description: |
+        建立抽獎活動（UC-1），**需 `ROLE_ADMIN`**。建立後初始狀態固定為 `DRAFT`（尚不可被 USER 抽獎）。
+
+        - 必填欄位：`name`（非空）、`startTime`（早於 `endTime`）、`endTime`、`drawLimit`（正整數 ≥ 1）。
+        - `drawLimit` 語意：**每個使用者於本活動整個週期的總抽獎次數上限**（非每日重置，AC-CAMP-007）。
+        - `status`/`id` 由伺服端產生，client 不得指定。
+        - 驗證失敗（名稱空／時間先後非法／上限非正整數）→ `400`（`A0000`），不建立活動。
+
+        **Traceability:** `FR-CAMP-01` / `AC-CAMP-005`
+      operationId: postCampaigns
+      security:
+        - bearerAuth: []      # 需 ROLE_ADMIN（JWT roles claim）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCampaignsRequestDTO'
+      responses:
+        '201':
+          description: 建立成功，回傳活動（狀態為 DRAFT）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostCampaignsResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 3
+                  name: "週年慶抽獎"
+                  status: "DRAFT"
+                  startTime: "2026-03-01T00:00:00Z"
+                  endTime: "2026-03-31T23:59:59Z"
+                  drawLimit: 10
+        '400':
+          description: 輸入驗證失敗（名稱空／結束早於開始／上限非正整數）→ `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '403':
+          description: 權限不足（非 ROLE_ADMIN 越權存取管理功能）→ `A0400`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+    put:
+      tags: [campaigns]
+      summary: 更新活動（全量）[campaign-campaigns-004]
+      description: |
+        全量更新活動可編輯欄位（UC-1），**需 `ROLE_ADMIN`**。`PUT` 覆蓋 `name/startTime/endTime/drawLimit`，
+        **不改 `status`**（狀態轉移走 `PATCH /campaigns/{campaignId}/status`）。
+
+        - 僅可於**可編輯狀態**修改：`DRAFT`（全量）或 `ACTIVE`（動態修改；不影響已抽結果）。
+          `ENDED` 為終態不可編輯 → `409`（`A0302`）。
+        - 編輯不得造成既有抽獎記錄失效或已抽結果回溯變更（編輯只影響後續抽獎）。
+        - 活動不存在 → `404`（`A0301`）；驗證失敗 → `400`（`A0000`）。
+
+        **Traceability:** `FR-CAMP-01` / `FR-CAMP-11`
+      operationId: putCampaignById
+      security:
+        - bearerAuth: []      # 需 ROLE_ADMIN（JWT roles claim）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutCampaignByIdRequestDTO'
+      responses:
+        '200':
+          description: 更新成功，回傳更新後的活動
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutCampaignByIdResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 3
+                  name: "週年慶抽獎（改）"
+                  status: "DRAFT"
+                  startTime: "2026-03-01T00:00:00Z"
+                  endTime: "2026-04-15T23:59:59Z"
+                  drawLimit: 20
+        '400':
+          description: 輸入驗證失敗 → `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '403':
+          description: 權限不足 → `A0400`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '404':
+          description: 活動不存在 → `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在"
+                data: null
+        '409':
+          description: 狀態衝突（非可編輯狀態，如 ENDED）→ `A0302`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0302"
+                message: "活動狀態衝突（非可編輯狀態）"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /campaigns/{campaignId}/status:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    patch:
+      tags: [campaigns]
+      summary: 活動狀態轉移 [campaign-campaigns-005]
+      description: |
+        觸發活動狀態轉移（UC-3），**需 `ROLE_ADMIN`**。請求體 `{ "status": "..." }`。
+
+        - **合法轉移**：`DRAFT → ACTIVE → ENDED`（單向）。`DRAFT→ACTIVE` 啟用後不可退回草稿；
+          `ENDED` 為終態**不可回轉**（到達 `end_time` 亦視同結束）。
+        - 非法轉移（如 `ENDED` 後再啟用、跳級）→ `409`（`A0302`），狀態不變。
+        - 請求體 `status` 非法值 → `400`（`A0000`）；活動不存在 → `404`（`A0301`）。
+        - 僅 `ACTIVE` 狀態的活動可供 USER 抽獎。
+
+        **Traceability:** `FR-CAMP-01` / `AC-CAMP-005`
+      operationId: patchCampaignStatus
+      security:
+        - bearerAuth: []      # 需 ROLE_ADMIN（JWT roles claim）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCampaignStatusRequestDTO'
+      responses:
+        '200':
+          description: 轉移成功，回傳更新後的活動（含新狀態）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatchCampaignStatusResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 3
+                  name: "週年慶抽獎"
+                  status: "ACTIVE"
+                  startTime: "2026-03-01T00:00:00Z"
+                  endTime: "2026-04-15T23:59:59Z"
+                  drawLimit: 20
+        '400':
+          description: 請求體 status 非法值 → `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '403':
+          description: 權限不足 → `A0400`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '404':
+          description: 活動不存在 → `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在"
+                data: null
+        '409':
+          description: 非法轉移（如 ENDED 後再啟用）→ `A0302`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0302"
+                message: "活動狀態衝突（非法轉移）"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /campaigns/{campaignId}/prizes:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    put:
+      tags: [prizes]
+      summary: 配置獎品與機率（整批）[campaign-prizes-001]
+      description: |
+        整批覆蓋配置獎品與機率（UC-2），**需 `ROLE_ADMIN`**。請求體為完整獎品清單（含銘謝惠顧）。
+
+        - **驗證（任一失敗 → 整筆配置不生效，活動維持原有效配置）**：
+          1. 每個 `probability` ∈ `[0, 100]`（越界 → `422` / `A0304`）。
+          2. 所有獎品（含 THANK_YOU）`probability` 總和 = 100%（浮點容差內；≠100 → `422` / `A0303`）。
+          3. 至少一個 `type = THANK_YOU`（缺 → `422` / `A0305`）。
+        - **銘謝惠顧**建模為 `type = THANK_YOU` 獎品，與一般獎品同列、同具機率；其 `quantity` 忽略（無限庫存）。
+        - `quantity` 僅 `PRIZE` 有意義（非負整數）；為庫存配置的 **config 真相**。
+        - **配罝成功即發布 `prize-stock-configured`**（ADR-010）：`THANK_YOU` 不發布；
+          事件 payload 見 `inventory-service.yaml`。
+        - 活動 `ENDED`（不可編輯）→ `409`（`A0302`）；活動不存在 → `404`（`A0301`）。
+        - 全量覆蓋語意：client 送出完整清單，獎品 `id` 由系統重建；已發生抽獎結果不受影響（僅後續抽獎採用新配置）。
+
+        **Traceability:** `FR-CAMP-02` ~ `FR-CAMP-06` / `AC-CAMP-001` ~ `003`
+      operationId: putCampaignPrizes
+      security:
+        - bearerAuth: []      # 需 ROLE_ADMIN（JWT roles claim）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutCampaignPrizesRequestDTO'
+      responses:
+        '200':
+          description: 配置成功，回傳生效的獎品清單（含系統產生的 id）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutCampaignPrizesResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  campaignId: 3
+                  prizes:
+                    - id: 21
+                      name: "iPhone 16"
+                      type: "PRIZE"
+                      probability: 5
+                      quantity: 10
+                    - id: 22
+                      name: "折價券 100 元"
+                      type: "PRIZE"
+                      probability: 15
+                      quantity: 100
+                    - id: 23
+                      name: "銘謝惠顧"
+                      type: "THANK_YOU"
+                      probability: 80
+                      quantity: 0
+        '400':
+          description: 結構性輸入錯誤（缺 prizes／type 非法／quantity 為負）→ `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '403':
+          description: 權限不足 → `A0400`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '404':
+          description: 活動不存在 → `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在"
+                data: null
+        '409':
+          description: 狀態衝突（ENDED 不可編輯配置）→ `A0302`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0302"
+                message: "活動狀態衝突（非可編輯狀態）"
+                data: null
+        '422':
+          description: |
+            業務不變量驗證失敗（整筆配置不生效）：
+            - 機率總和 ≠ 100% → `A0303`
+            - 機率越界 `[0,100]` → `A0304`
+            - 缺 `THANK_YOU` 獎品 → `A0305`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                sumMismatch:
+                  summary: 機率總和 ≠ 100%（A0303）
+                  value:
+                    code: "A0303"
+                    message: "獎品機率總和不等於 100%"
+                    data: null
+                outOfRange:
+                  summary: 機率越界（A0304）
+                  value:
+                    code: "A0304"
+                    message: "獎品機率越界 [0,100]"
+                    data: null
+                missingThankYou:
+                  summary: 缺 THANK_YOU（A0305）
+                  value:
+                    code: "A0305"
+                    message: "缺少銘謝惠顧獎品"
+                    data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /campaigns/{campaignId}/draw:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    post:
+      tags: [draws]
+      summary: 抽獎（單次／批次）[campaign-draws-001]
+      description: |
+        執行抽獎（UC-4 單次、UC-5 批次），**需 `ROLE_USER`**。**必須帶 `Idempotency-Key: <UUID>` header**（ADR-005；
+        Gateway 缺此 header 回 `400`）。
+
+        - **request body**：`{ "count": N }`，`count ≥ 1`（預設 1）。`count=1` 單次；`count=N≥2` 批次
+          （整批由**單一** Idempotency-Key 保護）。
+        - **response `data` 形狀**：單次回**單一結果物件**；批次回 `{ "draws": [ ... ] }`。
+          每筆結果含 `drawRecordId`、`campaignId`、`resultType`（`WIN`/`THANK_YOU`）、`prize{id,name,type}`
+          （`THANK_YOU` 時 `prize = null`，見 `campaign-db.md` §3.3）。
+        - **結果由伺服端演算法決定**（ADR-004 權重隨機），client 不得指定或影響中獎結果。
+        - **個人次數上限**（`drawLimit`，活動期間總額）：已達上限 → `429`（`A0306`），不抽、不扣任何資源。
+          批次 `count=N` 若剩餘次數 < N → 整批不執行、不產生部分結果。
+        - **防重複（ADR-005）**：複合冪等鍵 `userId + campaignId + idempotencyKey`。
+          同鍵 replay → 回傳與首次**逐位元一致**結果（`200`），不重抽/不重扣庫存/不重扣次數；
+          併發重入（鎖被他人持有）→ `409`（`A0307`）。
+        - **防超抽（ADR-006）**：命中獎品但庫存不足 → **降級為 THANK_YOU（不重抽）**，本次仍計次 1。
+        - 活動不存在或非 `ACTIVE` → `404`（`A0301`）。
+
+        **Traceability:** `FR-CAMP-07` ~ `FR-CAMP-19` / `AC-CAMP-004` ~ `016`
+      operationId: postCampaignDraw
+      security:
+        - bearerAuth: []      # 需 ROLE_USER（JWT roles claim）
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCampaignDrawRequestDTO'
+      responses:
+        '200':
+          description: |
+            抽獎成功（首次與 replay 皆 200，body 逐位元一致）。
+            `data`：`count=1` 回單一 `DrawResultResourceDTO`；`count≥2` 回 `BatchDrawResourceDTO`（`{ draws: [...] }`）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostCampaignDrawResponseDTO'
+              examples:
+                singleWin:
+                  summary: 單次中獎（count=1，WIN）
+                  value:
+                    code: "00000"
+                    message: "OK"
+                    data:
+                      drawRecordId: 501
+                      campaignId: 3
+                      resultType: "WIN"
+                      prize:
+                        id: 21
+                        name: "iPhone 16"
+                        type: "PRIZE"
+                singleThankYou:
+                  summary: 單次銘謝惠顧（count=1，THANK_YOU，prize=null）
+                  value:
+                    code: "00000"
+                    message: "OK"
+                    data:
+                      drawRecordId: 502
+                      campaignId: 3
+                      resultType: "THANK_YOU"
+                      prize: null
+                batch:
+                  summary: 批次（count=3，回 draws 陣列）
+                  value:
+                    code: "00000"
+                    message: "OK"
+                    data:
+                      draws:
+                        - drawRecordId: 503
+                          campaignId: 3
+                          resultType: "WIN"
+                          prize:
+                            id: 22
+                            name: "折價券 100 元"
+                            type: "PRIZE"
+                        - drawRecordId: 504
+                          campaignId: 3
+                          resultType: "THANK_YOU"
+                          prize: null
+                        - drawRecordId: 505
+                          campaignId: 3
+                          resultType: "THANK_YOU"
+                          prize: null
+        '400':
+          description: 缺 `Idempotency-Key` header／`count < 1` 等輸入錯誤 → `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '403':
+          description: 權限不足（非 ROLE_USER）→ `A0400`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '404':
+          description: 活動不存在或非 `ACTIVE`（DRAFT/ENDED 不可抽）→ `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在或未啟動"
+                data: null
+        '409':
+          description: 冪等鍵衝突（併發重入，鎖被他人持有）→ `A0307`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0307"
+                message: "冪等鍵衝突（併發重入）"
+                data: null
+        '429':
+          description: 個人抽獎次數超限（活動期間總額）→ `A0306`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0306"
+                message: "抽獎次數已達上限"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。
+        授權以 JWT `roles` claim 為準：管理端點需 `ROLE_ADMIN`、抽獎需 `ROLE_USER`、列表/詳情 PUBLIC。
+        token 由 auth-service 簽發，Gateway 與各服務以 `/.well-known/jwks.json` 公鑰獨立複驗（defense in depth）。
+
+  parameters:
+    CampaignIdParam:
+      name: campaignId
+      in: path
+      required: true
+      description: 活動唯一識別（正整數，對應 `campaigns.id` BIGSERIAL）。scope 由伺服端依路徑決定，不信任 client 傳入值。
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 3
+
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        冪等識別（client 產生之 UUID，一次點擊一個；ADR-005）。
+        複合冪等鍵 = `userId + campaignId + idempotencyKey`；同鍵重送（replay）回傳與首次逐位元一致的結果。
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # =====================================================================
+    # 列舉
+    # =====================================================================
+
+    CampaignStatus:
+      type: string
+      description: |
+        活動生命週期狀態（SA §4.1）。狀態機：`DRAFT → ACTIVE → ENDED`（單向，`ENDED` 為終態不可回轉）。
+      enum:
+        - DRAFT
+        - ACTIVE
+        - ENDED
+
+    PrizeType:
+      type: string
+      description: |
+        獎品型別。`THANK_YOU`（銘謝惠顧）建模為獎品，與 `PRIZE` 同列、同具機率（ADR-004）；
+        其 `quantity` 忽略（無限庫存，不扣庫存）。
+      enum:
+        - PRIZE
+        - THANK_YOU
+
+    DrawResultType:
+      type: string
+      description: |
+        抽獎結果型別（SA §4.2）。`THANK_YOU` 含兩種來源：權重抽選命中 THANK_YOU 獎品；
+        或命中獎品但庫存不足而**降級**（ADR-006，不重抽）。
+      enum:
+        - WIN
+        - THANK_YOU
+
+    # =====================================================================
+    # 請求 DTO（request body）
+    # =====================================================================
+
+    PostCampaignsRequestDTO:
+      type: object
+      description: |
+        建立活動請求體（UC-1）。`id`/`status` 由伺服端產生（`status` 固定 `DRAFT`），client 不得指定。
+      required:
+        - name
+        - startTime
+        - endTime
+        - drawLimit
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 活動名稱（非空，對應 `campaigns.name`）。
+        startTime:
+          type: string
+          format: date-time
+          description: 活動開始時間（可抽獎起點；需早於 `endTime`，對應 `campaigns.start_time`）。
+        endTime:
+          type: string
+          format: date-time
+          description: |
+            活動結束時間（可抽獎終點，需晚於 `startTime`）；個人次數計數 TTL 對齊此時間（SA UC-1）。
+            對應 `campaigns.end_time`。
+        drawLimit:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |
+            **每個使用者於本活動整個週期的總抽獎次數上限**（活動期間總額，非每日重置；對應 `campaigns.draw_limit`）。
+            正整數 ≥ 1（`chk_campaigns_draw_limit`）。
+      example:
+        name: "週年慶抽獎"
+        startTime: "2026-03-01T00:00:00Z"
+        endTime: "2026-03-31T23:59:59Z"
+        drawLimit: 10
+
+    PutCampaignByIdRequestDTO:
+      type: object
+      description: |
+        全量更新活動請求體（UC-1）。覆蓋 `name/startTime/endTime/drawLimit`，**不含 `status`**（狀態轉移走 PATCH status）。
+        僅可於可編輯狀態（`DRAFT`/`ACTIVE`）修改；`ENDED` 不可編輯 → `409`（`A0302`）。
+      required:
+        - name
+        - startTime
+        - endTime
+        - drawLimit
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 活動名稱（非空）。
+        startTime:
+          type: string
+          format: date-time
+          description: 活動開始時間（需早於 `endTime`）。
+        endTime:
+          type: string
+          format: date-time
+          description: 活動結束時間（需晚於 `startTime`）。
+        drawLimit:
+          type: integer
+          format: int32
+          minimum: 1
+          description: 每使用者活動期間總抽獎次數上限（正整數 ≥ 1）。
+      example:
+        name: "週年慶抽獎（改）"
+        startTime: "2026-03-01T00:00:00Z"
+        endTime: "2026-04-15T23:59:59Z"
+        drawLimit: 20
+
+    PatchCampaignStatusRequestDTO:
+      type: object
+      description: |
+        狀態轉移請求體（UC-3）。合法轉移 `DRAFT → ACTIVE → ENDED`（單向，`ENDED` 終態不可回轉）；
+        非法轉移 → `409`（`A0302`）。
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+      example:
+        status: "ACTIVE"
+
+    PutCampaignPrizesRequestDTO:
+      type: object
+      description: |
+        整批配置獎品請求體（UC-2）。**全量覆蓋**語意：client 送出完整獎品清單（含銘謝惠顧），
+        獎品 `id` 由系統重建；已發生抽獎結果不受影響（僅後續抽獎採用新配置）。
+        驗證（總和 100%／越界／缺 THANK_YOU）失敗 → 整筆配置不生效（`422`）。
+      required:
+        - prizes
+      properties:
+        prizes:
+          type: array
+          minItems: 1
+          description: 完整獎品清單（含至少一個 `THANK_YOU`）。
+          items:
+            $ref: '#/components/schemas/PrizeInputDTO'
+      example:
+        prizes:
+          - name: "iPhone 16"
+            type: "PRIZE"
+            probability: 5
+            quantity: 10
+          - name: "折價券 100 元"
+            type: "PRIZE"
+            probability: 15
+            quantity: 100
+          - name: "銘謝惠顧"
+            type: "THANK_YOU"
+            probability: 80
+            quantity: 0
+
+    PrizeInputDTO:
+      type: object
+      description: |
+        獎品配置輸入項（UC-2）。`probability` ∈ `[0,100]`；全體（含 THANK_YOU）總和 = 100%。
+        `quantity` 僅 `PRIZE` 有意義（可發放數量，非負整數）；`THANK_YOU` 忽略（無限庫存，可填 0）。
+      required:
+        - name
+        - type
+        - probability
+        - quantity
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 獎品名稱（非空，對應 `prizes.name`）。
+        type:
+          $ref: '#/components/schemas/PrizeType'
+        probability:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: |
+            中獎機率（百分比）。含銘謝惠顧在內，全體總和必須 = 100%（浮點容差內，app-level 驗證，
+            `FR-CAMP-04`）。越界 → `422`/`A0304`。對應 `prizes.probability`（NUMERIC(5,2)）。
+        quantity:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            可發放數量（對應 `prizes.stock`）。僅 `PRIZE` 有意義（非負整數）；
+            `THANK_YOU` 忽略（無限庫存，值為 0）。為庫存 config 真相，同步至 inventory-service（ADR-010）。
+      example:
+        name: "iPhone 16"
+        type: "PRIZE"
+        probability: 5
+        quantity: 10
+
+    PostCampaignDrawRequestDTO:
+      type: object
+      description: |
+        抽獎請求體（UC-4 單次 / UC-5 批次）。`count` 可省略（預設 1）。`count=1` 單次；
+        `count=N≥2` 批次（整批由**單一** Idempotency-Key 保護，一次扣 N 次）。
+        中獎結果由伺服端演算法決定，client 不得指定。
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 1
+          description: |
+            抽獎次數（預設 1）。`count ≥ 1`；`count=N≥2` 為批次。若剩餘次數 < N → 整批不執行 → `429`（`A0306`）。
+            上限由 `drawLimit`（活動期間總額）於 runtime 判定，非 schema 硬上限。
+      example:
+        count: 1
+
+    # =====================================================================
+    # 資源 DTO（response `data` 承載的資源）
+    # =====================================================================
+
+    CampaignSummaryResourceDTO:
+      type: object
+      description: |
+        活動摘要（列表項，PUBLIC）。**不含 `drawLimit`**（管理欄位，避免洩漏控管參數）。
+      required:
+        - id
+        - name
+        - status
+        - startTime
+        - endTime
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 活動唯一識別（對應 `campaigns.id`）。
+        name:
+          type: string
+          description: 活動名稱。
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        startTime:
+          type: string
+          format: date-time
+          description: 活動開始時間。
+        endTime:
+          type: string
+          format: date-time
+          description: 活動結束時間。
+      example:
+        id: 1
+        name: "新春抽獎"
+        status: "ACTIVE"
+        startTime: "2026-02-01T00:00:00Z"
+        endTime: "2026-02-15T23:59:59Z"
+
+    CampaignDetailResourceDTO:
+      type: object
+      description: |
+        活動詳情（PUBLIC）。**不含 `drawLimit`**（管理欄位）；獎品清單僅回 `id/name/type`，
+        **不暴露 `probability`/`quantity`**（SA §5.2 敏感營運參數）。
+      required:
+        - id
+        - name
+        - status
+        - startTime
+        - endTime
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 活動唯一識別。
+        name:
+          type: string
+          description: 活動名稱。
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        startTime:
+          type: string
+          format: date-time
+          description: 活動開始時間。
+        endTime:
+          type: string
+          format: date-time
+          description: 活動結束時間。
+        prizes:
+          type: array
+          description: 獎品清單（供展示「可贏得什麼」），僅含 `id/name/type`。
+          items:
+            $ref: '#/components/schemas/PrizeSummaryResourceDTO'
+      example:
+        id: 1
+        name: "新春抽獎"
+        status: "ACTIVE"
+        startTime: "2026-02-01T00:00:00Z"
+        endTime: "2026-02-15T23:59:59Z"
+        prizes:
+          - id: 11
+            name: "iPhone 16"
+            type: "PRIZE"
+          - id: 13
+            name: "銘謝惠顧"
+            type: "THANK_YOU"
+
+    CampaignResourceDTO:
+      type: object
+      description: |
+        活動資源（管理端回傳，ADMIN）。含完整欄位（**含 `drawLimit`**）。
+      required:
+        - id
+        - name
+        - status
+        - startTime
+        - endTime
+        - drawLimit
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 活動唯一識別。
+        name:
+          type: string
+          description: 活動名稱。
+        status:
+          $ref: '#/components/schemas/CampaignStatus'
+        startTime:
+          type: string
+          format: date-time
+          description: 活動開始時間。
+        endTime:
+          type: string
+          format: date-time
+          description: 活動結束時間。
+        drawLimit:
+          type: integer
+          format: int32
+          minimum: 1
+          description: 每使用者活動期間總抽獎次數上限（管理欄位）。
+      example:
+        id: 3
+        name: "週年慶抽獎"
+        status: "DRAFT"
+        startTime: "2026-03-01T00:00:00Z"
+        endTime: "2026-03-31T23:59:59Z"
+        drawLimit: 10
+
+    PrizeSummaryResourceDTO:
+      type: object
+      description: |
+        獎品摘要（PUBLIC / 抽獎結果承載）。僅含 `id/name/type`，**不暴露 `probability`/`quantity`**（敏感營運參數）。
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 獎品唯一識別（對應 `prizes.id`）。
+        name:
+          type: string
+          description: 獎品名稱。
+        type:
+          $ref: '#/components/schemas/PrizeType'
+      example:
+        id: 21
+        name: "iPhone 16"
+        type: "PRIZE"
+
+    PrizeResourceDTO:
+      type: object
+      description: |
+        獎品資源（管理端回傳，ADMIN）。含完整欄位（含 `probability`/`quantity`）。
+      required:
+        - id
+        - name
+        - type
+        - probability
+        - quantity
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 獎品唯一識別（系統產生）。
+        name:
+          type: string
+          description: 獎品名稱。
+        type:
+          $ref: '#/components/schemas/PrizeType'
+        probability:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 中獎機率（百分比）；全體總和 = 100%。
+        quantity:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 可發放數量；`THANK_YOU` 為 0 且忽略（無限庫存）。
+      example:
+        id: 21
+        name: "iPhone 16"
+        type: "PRIZE"
+        probability: 5
+        quantity: 10
+
+    PrizesConfigResourceDTO:
+      type: object
+      description: |
+        獎品配置結果（`putCampaignPrizes` 回傳的 `data`）。為已生效的完整獎品清單（含系統產生的 `id`）。
+      required:
+        - campaignId
+        - prizes
+      properties:
+        campaignId:
+          type: integer
+          format: int64
+          description: 所屬活動唯一識別。
+        prizes:
+          type: array
+          description: 生效的獎品清單（含 THANK_YOU）。
+          items:
+            $ref: '#/components/schemas/PrizeResourceDTO'
+      example:
+        campaignId: 3
+        prizes:
+          - id: 21
+            name: "iPhone 16"
+            type: "PRIZE"
+            probability: 5
+            quantity: 10
+          - id: 23
+            name: "銘謝惠顧"
+            type: "THANK_YOU"
+            probability: 80
+            quantity: 0
+
+    DrawResultResourceDTO:
+      type: object
+      description: |
+        單筆抽獎結果（UC-4）。`resultType=WIN` 時 `prize` 為中獎獎品；
+        `resultType=THANK_YOU` 時 `prize=null`（對齊 `campaign-db.md` §3.3：THANK_YOU 落庫不帶 `prize_id`）。
+      required:
+        - drawRecordId
+        - campaignId
+        - resultType
+      properties:
+        drawRecordId:
+          type: integer
+          format: int64
+          description: 抽獎記錄唯一識別（對應 `draw_records.id`；亦為 `inventory-commit` 事件的冪等鍵，ADR-006）。
+        campaignId:
+          type: integer
+          format: int64
+          description: 抽獎所屬活動識別（由請求路徑決定，非 client 指定）。
+        resultType:
+          $ref: '#/components/schemas/DrawResultType'
+        prize:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PrizeSummaryResourceDTO'
+          description: 中獎獎品（`WIN` 時存在；`THANK_YOU` 時為 `null`）。
+      example:
+        drawRecordId: 501
+        campaignId: 3
+        resultType: "WIN"
+        prize:
+          id: 21
+          name: "iPhone 16"
+          type: "PRIZE"
+
+    BatchDrawResourceDTO:
+      type: object
+      description: |
+        批次抽獎結果（`count=N≥2` 時回傳的 `data`）。承載 N 筆獨立抽選結果（UC-5）。
+      required:
+        - draws
+      properties:
+        draws:
+          type: array
+          minItems: 2
+          description: N 筆抽獎結果（與 `count` 一致；每筆獨立計算機率與庫存）。
+          items:
+            $ref: '#/components/schemas/DrawResultResourceDTO'
+      example:
+        draws:
+          - drawRecordId: 503
+            campaignId: 3
+            resultType: "WIN"
+            prize:
+              id: 22
+              name: "折價券 100 元"
+              type: "PRIZE"
+          - drawRecordId: 504
+            campaignId: 3
+            resultType: "THANK_YOU"
+            prize: null
+
+    # =====================================================================
+    # 回應 envelope（成功，code/message/data，data 型別明確）
+    # =====================================================================
+
+    GetCampaignsResponseDTO:
+      type: object
+      description: 活動列表回應 envelope。`data` 承載 `CampaignSummaryResourceDTO` 陣列（不含 `drawLimit`）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 成功碼，固定 `"00000"`。
+          example: "00000"
+        message:
+          type: string
+          description: 人類可讀訊息，成功通常 `"OK"`。
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignSummaryResourceDTO'
+
+    GetCampaignByIdResponseDTO:
+      type: object
+      description: 活動詳情回應 envelope。`data` 承載 `CampaignDetailResourceDTO`（含獎品清單，不含敏感欄位）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/CampaignDetailResourceDTO'
+
+    PostCampaignsResponseDTO:
+      type: object
+      description: 建立活動回應 envelope。`data` 承載 `CampaignResourceDTO`（狀態為 DRAFT）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/CampaignResourceDTO'
+
+    PutCampaignByIdResponseDTO:
+      type: object
+      description: 更新活動回應 envelope。`data` 承載更新後的 `CampaignResourceDTO`。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/CampaignResourceDTO'
+
+    PatchCampaignStatusResponseDTO:
+      type: object
+      description: 狀態轉移回應 envelope。`data` 承載轉移後的 `CampaignResourceDTO`（含新狀態）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/CampaignResourceDTO'
+
+    PutCampaignPrizesResponseDTO:
+      type: object
+      description: 獎品配置回應 envelope。`data` 承載 `PrizesConfigResourceDTO`（含系統產生的 id）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/PrizesConfigResourceDTO'
+
+    PostCampaignDrawResponseDTO:
+      type: object
+      description: |
+        抽獎回應 envelope（首次與 replay 逐位元一致，ADR-005）。
+        `data`：`count=1` 回單一 `DrawResultResourceDTO`；`count≥2` 回 `BatchDrawResourceDTO`（`{ draws: [...] }`）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          description: '單次回單一結果物件；批次回 `{ draws: [...] }`。'
+          oneOf:
+            - $ref: '#/components/schemas/DrawResultResourceDTO'
+            - $ref: '#/components/schemas/BatchDrawResourceDTO'
+
+    ErrorEnvelope:
+      type: object
+      description: |
+        錯誤回應 envelope（成功與失敗同一結構，`docs/api/README.md` §2.2）。
+        `code` 為數字錯誤碼字串（`Axxxx` 用戶端 / `Bxxxx` 系統 / `Cxxxx` 第三方）；
+        HTTP status 與 `code` 的對映見 `docs/api/README.md` §2.3。`data` 失敗時為 `null`。
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: 數字錯誤碼（如 `A0301`）。
+        message:
+          type: string
+          description: 人類可讀錯誤訊息。
+        data:
+          type: object
+          nullable: true
+          description: 失敗時為 `null`。
+      example:
+        code: "A0301"
+        message: "活動不存在"
+        data: null

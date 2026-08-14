@@ -1,0 +1,226 @@
+openapi: 3.0.3
+
+info:
+  title: inventory-service — 事件（message）契約
+  version: 1.0.0
+  description: |
+    ## 定位：本服務「無對外 REST API」
+
+    inventory-service 是**純後端協作服務**（庫存扣減真相來源，見 ADR-006），
+    由 **Spring Cloud Stream + RabbitMQ（ADR-007）** 的事件驅動，**沒有 REST paths**。
+    因此本文件採用「OpenAPI 骨架 + 只放 `components.schemas`」的形式，
+    文件化兩個**事件 payload**，並以 prose 描述消費語意。
+
+    > 本服務的對外契約 = 事件（message）契約，binding 定義見 **ADR-007**（`inventory-commit`）
+    > 與 **ADR-010**（`prize-stock-configured`）。不列入 `docs/api/README.md` §3 的 REST API 清單。
+    >
+    > **安全語意**：本服務為**內部服務信任（non-user RBAC）**，事件由 campaign-service 發布、
+    > inventory-service 消費，無使用者鑑別／授權，故不提供 `securitySchemes`。
+    > inventory-service 不信任任何 client，亦無 client 可直接呼叫之狀態變更介面
+    > （inventory SA §2.2）。
+
+    ## 事件與消費語意總覽
+
+    ### 1. `inventory-commit`（binding，ADR-006/007）
+
+    - 生產者：campaign-service → 消費者：inventory-service。
+    - **delivery semantics：at-least-once**（ADR-007），消息可能重複投遞。
+    - **冪等**：consumer 以 `drawRecordId` 去重（`reservations.draw_record_id` UNIQUE，ADR-005/006）；
+      相同 `drawRecordId` 重複投遞 → 僅 ack、不重複扣減。
+    - **條件更新（真相扣減，絕不負庫存）**：
+      `UPDATE inventory SET stock = stock - quantity WHERE prize_id = ? AND stock > 0`
+      （POC `quantity` 恆 = 1，故 `stock > 0`；一般化為 `stock >= quantity`）。
+    - **rowcount = 1** → 扣減成功，`reservations.status = COMMITTED`（終態）。
+    - **rowcount = 0** → 庫存不足 → **補償**：`reservations.status = REVERSED`（撤銷中獎語意）
+      + 校正即時判定層（加回額度）+ 告警（UC-2）。**絕不扣成負數**（另有 DB `CHECK (stock >= 0)` 兜底）。
+
+    ### 2. `prize-stock-configured`（binding，ADR-010）
+
+    - 生產者：campaign-service → 消費者：inventory-service（獎品建立或 `quantity` 修改時發布；THANK_YOU 不發布）。
+    - **冪等與排序**：以 `prizeId` 做 upsert 鍵；以 `configVersion` 去重與排序，
+      僅 `incomingConfigVersion > inventory.last_config_version` 時套用。
+      相同版本重投 → 跳過；較低版本 → 視為亂序／過期 → 跳過。
+    - **差值調整 + 下限 guard**：`delta = newQuantity - oldQuantity`，
+      `UPDATE inventory SET stock = stock + delta, last_config_version = ? WHERE prize_id = ? AND stock + delta >= 0`。
+      首次建置（列不存在）→ `INSERT`（`stock = newQuantity`、`last_config_version = configVersion`）。
+    - **rowcount = 1** → 套用成功（增加 = 補貨、減少 = 縮減）。
+    - **rowcount = 0** → 新總量 < 已發放數 → **拒絕（不 clamp）**：`stock` 不變、記錄衝突 + 告警，
+      由對帳收斂（`FR-INV-05` 延伸）。
+
+paths: {}
+
+components:
+  schemas:
+    # =====================================================================
+    # 事件 payload
+    # =====================================================================
+
+    InventoryCommitEvent:
+      type: object
+      description: |
+        庫存扣減事件（binding: `inventory-commit`，ADR-006/007）。
+        生產者：campaign-service；消費者：inventory-service。
+
+        **delivery semantics：at-least-once**（可能重複投遞）。
+        consumer 以 `drawRecordId` 冪等去重；同一 `drawRecordId` 至多觸發一次出貨真相扣減。
+
+        **消費語意**：
+        1. 冪等檢查 `reservations.draw_record_id`；已存在 → 直接 ack，不重複扣減。
+        2. 條件更新（真相扣減）：`UPDATE inventory SET stock = stock - quantity WHERE prize_id = ? AND stock > 0`。
+        3. rowcount = 1 → `reservations.status = COMMITTED`（扣減成功）。
+        4. rowcount = 0 → 庫存不足 → 補償（UC-2）：`reservations.status = REVERSED`
+           + 校正即時判定層 + 告警。**絕不負庫存**（`FR-INV-02`）。
+      required:
+        - drawRecordId
+        - prizeId
+        - quantity
+      properties:
+        drawRecordId:
+          type: integer
+          format: int64
+          description: |
+            **冪等鍵（唯一）**。對應 campaign.draw_records.id（邏輯引用，無跨 DB FK，ADR-002）。
+            由上游抽獎記錄決定、事件攜帶；consumer **不得自行生成**。
+            重複投遞撞此鍵即忽略（`reservations.draw_record_id` UNIQUE，ADR-005/006）。
+        prizeId:
+          type: integer
+          format: int64
+          description: 扣減之獎品識別（邏輯引用 campaign.prizes.id，無跨 DB FK）。
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 1
+          description: |
+            扣減件數。**POC 階段恆 = 1**（每次抽獎一件，`chk_reservations_quantity` 亦限 `>= 1`）。
+      example:
+        drawRecordId: 1001
+        prizeId: 42
+        quantity: 1
+
+    PrizeStockConfiguredEvent:
+      type: object
+      description: |
+        獎品庫存配置同步事件（binding: `prize-stock-configured`，ADR-010）。
+        生產者：campaign-service；消費者：inventory-service。
+        campaign-service 於獎品建立或 `quantity` 修改時發布；`THANK_YOU` 獎品不發布
+        （銘謝惠顧不扣庫存，`stock` 忽略）。
+
+        **冪等／排序語意**：
+        - 以 `prizeId` 做 **upsert 鍵**（`uq_inventory_prize_id` UNIQUE）。
+        - 以 `configVersion` 做 **冪等去重與排序**：僅
+          `incomingConfigVersion > inventory.last_config_version` 時套用；
+          相同版本重投 → 跳過；較低版本 → 亂序／過期 → 跳過。
+
+        **消費語意**（`delta = newQuantity - oldQuantity`，由 inventory 推導）：
+        1. 列不存在（首次建置）→ `INSERT`（`stock = newQuantity`、`last_config_version = configVersion`）。
+        2. 列已存在 → 條件更新：
+           `UPDATE inventory SET stock = stock + delta, last_config_version = ? WHERE prize_id = ? AND stock + delta >= 0`。
+        3. rowcount = 1 → 套用成功（增加 = 補貨、減少 = 縮減）。
+        4. rowcount = 0 → 新總量 < 已發放數 → **拒絕（不 clamp）**：`stock` 不變、記錄衝突 + 告警，
+           由對帳收斂。
+      required:
+        - prizeId
+        - campaignId
+        - oldQuantity
+        - newQuantity
+        - configVersion
+      properties:
+        prizeId:
+          type: integer
+          format: int64
+          description: |
+            **upsert／冪等鍵**。對應 campaign.prizes.id（邏輯引用，無跨 DB FK）。
+            `uq_inventory_prize_id` UNIQUE 承接 upsert。
+        campaignId:
+          type: integer
+          format: int64
+          description: 路由與稽核用（邏輯引用 campaign.campaigns.id）。
+        oldQuantity:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            修改前 quantity。campaign 於更新交易內**原子取得** old 值，是 config 真相。
+        newQuantity:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            修改後 quantity。delta = `newQuantity - oldQuantity` 由 inventory 推導（帶絕對值使 event 可稽核、可重放）。
+        configVersion:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            **每獎品單調遞增**的配置版本，用於冪等去重與排序（對應 `inventory.last_config_version`）。
+            僅 `incomingVersion > last_config_version` 時套用。
+      example:
+        prizeId: 42
+        campaignId: 7
+        oldQuantity: 100
+        newQuantity: 120
+        configVersion: 3
+
+    # =====================================================================
+    # 輔助 schema：庫存／預留生命週期（非事件 payload）
+    # =====================================================================
+
+    InventoryState:
+      type: object
+      description: |
+        庫存真相來源列的快照（`inventory` table，ADR-006）。**非事件 payload**，
+        僅作為事件消費後 DB 落點之輔助說明。`stock` 為唯一真相來源，
+        條件更新（`WHERE stock > 0` / `WHERE stock + delta >= 0`）與 `CHECK (stock >= 0)` 保證絕不為負。
+      properties:
+        prizeId:
+          type: integer
+          format: int64
+          description: 對應獎品識別（`uq_inventory_prize_id` UNIQUE；THANK_YOU 無此列）。
+        stock:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 剩餘可出貨數量（唯一真相）。扣減單向，但可因獎品 `quantity` 配置同步增減（ADR-010），不得為負。
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 樂觀鎖版本號（app 層條件更新輔助，ADR-003 替代方案保留）。
+        lastConfigVersion:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 最近套用的 `prize-stock-configured` 版本；冪等去重與亂序排序鍵（ADR-010）。
+        updatedAt:
+          type: string
+          format: date-time
+          description: 最後異動時間（UTC）。
+      example:
+        prizeId: 42
+        stock: 80
+        version: 23
+        lastConfigVersion: 3
+        updatedAt: "2026-08-14T06:00:00Z"
+
+    ReservationState:
+      type: string
+      enum:
+        - RESERVED
+        - COMMITTED
+        - REVERSED
+      description: |
+        扣減／預留記錄生命週期狀態（`reservations.status`，SA §4.3 / inventory-db.md §3.4）。
+        **非事件 payload**，僅作為消費流程狀態機之輔助說明。
+
+        生命週期（單向，終態不可回轉）：
+
+        ```text
+        RESERVED ──► COMMITTED  (扣減成功，終態)
+            │
+            └───────► REVERSED   (終態：庫存不足補償 UC-2 / 超時回收 UC-3)
+        ```
+
+        - `RESERVED`：已確認、等待扣減（非終態；`reserved_at` 為超時回收基準，`FR-INV-05`）
+        - `COMMITTED`：扣減成功（終態；`committed_at` 必有值）
+        - `REVERSED`：已撤銷（終態；庫存不足補償 UC-2 或超時回收 UC-3）

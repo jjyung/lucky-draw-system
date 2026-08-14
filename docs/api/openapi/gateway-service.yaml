@@ -1,0 +1,537 @@
+openapi: 3.0.3
+
+info:
+  title: gateway-service — 對外 surface 彙整（API Gateway）
+  version: 1.0.0
+  description: |
+    ## 定位：唯一對外入口的「surface 彙整」，無自有業務端點
+
+    gateway-service 是系統**唯一的對外流量入口**（API Gateway，ADR-009）。它**不承載業務邏輯、
+    不轉寫 payload**，只依序執行：**驗證 → 限流 → 冪等 header 檢查 → 路由 → 身份傳遞**。
+    因此本文件不重複定義各業務 payload 的完整 schema（那是 `auth-service.yaml` /
+    `campaign-service.yaml` 的職責），只彙整**對外路徑 + 安全方案 + 限流／冪等行為 + 路由對映**。
+
+    ## 涵蓋範圍
+
+    對外 surface = **auth 4 條 + campaign 7 條**（對應 `docs/api/README.md` §3 API ID 清單的
+    auth 段與 campaign 段）。每個 operation 的 payload request/response schema 見來源文件，
+    operationId 與 API ID 沿用該清單，不另起編號：
+
+    | 來源文件 | 路徑 |
+    |----------|------|
+    | `auth-service.yaml` | `/auth/register`、`/auth/login`、`/auth/refresh`、`/auth/.well-known/jwks.json` |
+    | `campaign-service.yaml` | `/campaigns`、`/campaigns/{campaignId}`、`/campaigns/{campaignId}/status`、`/campaigns/{campaignId}/prizes`、`/campaigns/{campaignId}/draw` |
+
+    ## Gateway 行為（每個 path 於其 `description` 標註，見下文）
+
+    1. **驗證（UC-1，ADR-009）**：受保護路徑需有效 JWT（RS256）。無憑證／憑證無效 → `401`（`A0203`）、
+       憑證過期 → `401`（`A0202`）；驗證失敗**不轉發、不觸碰下游**。gateway 只做「鑑別」，不做「授權」。
+    2. **限流（UC-2，ADR-003）**：所有路徑（含 PUBLIC）皆受限流保護；超限回 `429`（`A0500`），
+       **不轉發**。回應帶 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers。
+       預設門檻：per-user 10 req/s、per-IP 100 req/s（env 可調：`RATE_LIMIT_USER_RPS` /
+       `RATE_LIMIT_IP_RPS`，見 `docs/api/README.md` §2.6）。
+    3. **冪等 header 檢查（UC-3，ADR-005）**：僅 `POST /campaigns/{campaignId}/draw` 要求
+       `Idempotency-Key` header；缺 → `400`（`A0501`），**不轉發**。gateway 只做**存在性檢查，
+       不驗證格式、不去重**（冪等真正語意在 campaign-service）。
+    4. **路由（UC-1）**：`login/register/jwks/refresh` → auth-service；`campaigns/draw` → campaign-service。
+    5. **公開放行（UC-4）**：PUBLIC 路徑跳過身份驗證（**仍受限流**）；其餘一律需憑證（清單封閉）。
+
+    ## 身份傳遞（ADR-009 §2）
+
+    驗證成功後，gateway 以 header 傳遞給下游：**`X-User-Id`**、**`X-User-Roles`**，
+    並**移除原始 `Authorization` header（不向下游透傳）**。傳遞欄位語意為「Gateway 已驗證」的
+    **提示**，非下游身分權威來源；下游服務獨立以 public key 複驗（defense in depth）。
+    公開功能（UC-4）無憑證可解，傳遞時不帶身份/角色。
+
+    ## 統一規約（詳見 `docs/api/README.md` §2）
+
+    - **回應 envelope**：`{ code, message, data }`；`code` 為數字錯誤碼字串（成功 `"00000"`）。
+    - **錯誤碼對映**：gateway 產出的錯誤碼 `A0202`（憑證過期 401）、`A0203`（憑證無效 401）、
+      `A0500`（限流 429）、`A0501`（缺 Idempotency-Key 400）。業務層錯誤碼（`A01xx`/`A02xx`/`A03xx`/
+      `A0400`）由下游產生，詳見各來源 YAML，不在本文件重複。
+
+servers:
+  - url: /api/v1
+    description: |
+      Gateway 對外 surface 前綴（ADR-009）。下方 `paths` 為相對路徑（不含 `/api/v1`）。
+      對外實際入口即本 Gateway；內部服務間呼叫/事件不走此前綴。
+
+tags:
+  - name: auth
+    description: 路由至 auth-service（註冊/登入/刷新/公鑰）
+  - name: campaigns
+    description: 路由至 campaign-service（活動 CRUD、狀態機、抽獎）
+
+paths:
+  # =========================================================================
+  # auth-service 路由（4 條）
+  # =========================================================================
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 使用者註冊 [auth-users-001] → auth-service
+      description: |
+        **Gateway 行為**
+        - 驗證：PUBLIC，跳過身份驗證（UC-4）。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **auth-service**（不轉寫 payload）。
+        - 身份傳遞：無（公開功能不帶身份/角色）。
+
+        **Payload 來源**：request `PostAuthRegisterRequestDTO`、response `PostAuthRegisterResponseDTO`
+        與錯誤清單（`A0100/A0101/A0102/A0103` 等）見 `auth-service.yaml`，不在此重複。
+      operationId: postAuthRegister
+      security: []          # PUBLIC
+      responses:
+        '200':
+          description: |
+            由 auth-service 產生（詳見 `auth-service.yaml`）。gateway 不修改 payload。
+            回應帶限流 headers（`X-RateLimit-*`）。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 登入並簽發憑證 [auth-tokens-001] → auth-service
+      description: |
+        **Gateway 行為**
+        - 驗證：PUBLIC，跳過身份驗證（UC-4）。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **auth-service**（不轉寫 payload）。
+        - 身份傳遞：無。
+
+        **Payload 來源**：request `PostAuthLoginRequestDTO`、response `PostAuthLoginResponseDTO`
+        與錯誤清單（`A0200/A0201` 等）見 `auth-service.yaml`，不在此重複。
+      operationId: postAuthLogin
+      security: []          # PUBLIC
+      responses:
+        '200':
+          description: 由 auth-service 產生（詳見 `auth-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/.well-known/jwks.json:
+    get:
+      tags: [auth]
+      summary: 取得驗證公鑰（JWKS） [auth-keys-001] → auth-service
+      description: |
+        **Gateway 行為**
+        - 驗證：PUBLIC，跳過身份驗證（UC-4）。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **auth-service**（不轉寫 payload）。
+        - 身份傳遞：無。
+
+        **Payload 來源**：response `GetAuthJwksResponseDTO` 見 `auth-service.yaml`，不在此重複。
+        此公鑰供 Gateway 與各服務獨立複驗 JWT（ADR-009 defense in depth）。
+      operationId: getAuthJwks
+      security: []          # PUBLIC
+      responses:
+        '200':
+          description: 由 auth-service 產生（詳見 `auth-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新存取憑證 [auth-tokens-002] → auth-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT（RS256）；無憑證／憑證無效 → `401`（`A0203`）、
+          過期 → `401`（`A0202`），**不轉發、不觸碰下游**。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **auth-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PostAuthRefreshRequestDTO`、response `PostAuthRefreshResponseDTO`
+        與錯誤清單（`A0200/A0202/A0203/A0400` 等）見 `auth-service.yaml`，不在此重複。
+      operationId: postAuthRefresh
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 由 auth-service 產生（詳見 `auth-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # =========================================================================
+  # campaign-service 路由（7 條）
+  # =========================================================================
+
+  /campaigns:
+    get:
+      tags: [campaigns]
+      summary: 活動列表（不含管理欄位）[campaign-campaigns-001] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：PUBLIC，跳過身份驗證（UC-4）。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：無。
+
+        **Payload 來源**：response `GetCampaignsResponseDTO`（不含 `drawLimit` 管理欄位）見
+        `campaign-service.yaml`，不在此重複。
+      operationId: getCampaigns
+      security: []          # PUBLIC
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      tags: [campaigns]
+      summary: 建立活動 [campaign-campaigns-003] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT；無憑證／無效 → `401`（`A0203`）、過期 → `401`（`A0202`），
+          **不轉發**。授權（`ROLE_ADMIN`）由下游判定，gateway 不過濾角色。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PostCampaignsRequestDTO`、response `PostCampaignsResponseDTO`
+        與錯誤清單（`A0000/A0400` 等）見 `campaign-service.yaml`，不在此重複。
+      operationId: postCampaigns
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: 建立成功（由 campaign-service 產生，詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /campaigns/{campaignId}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    get:
+      tags: [campaigns]
+      summary: 活動詳情 [campaign-campaigns-002] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：PUBLIC，跳過身份驗證（UC-4）。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：無。
+
+        **Payload 來源**：response `GetCampaignByIdResponseDTO`（獎品清單不含 `probability`/`quantity`）
+        與錯誤清單（`A0301` 等）見 `campaign-service.yaml`，不在此重複。
+      operationId: getCampaignById
+      security: []          # PUBLIC
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    put:
+      tags: [campaigns]
+      summary: 更新活動（全量）[campaign-campaigns-004] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT；無憑證／無效 → `401`（`A0203`）、過期 → `401`（`A0202`），
+          **不轉發**。授權（`ROLE_ADMIN`）由下游判定。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PutCampaignByIdRequestDTO`、response `PutCampaignByIdResponseDTO`
+        與錯誤清單（`A0000/A0301/A0302/A0400` 等）見 `campaign-service.yaml`，不在此重複。
+      operationId: putCampaignById
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /campaigns/{campaignId}/status:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    patch:
+      tags: [campaigns]
+      summary: 活動狀態轉移 [campaign-campaigns-005] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT；無憑證／無效 → `401`（`A0203`）、過期 → `401`（`A0202`），
+          **不轉發**。授權（`ROLE_ADMIN`）由下游判定。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PatchCampaignStatusRequestDTO`、response `PatchCampaignStatusResponseDTO`
+        與錯誤清單（`A0000/A0301/A0302/A0400` 等）見 `campaign-service.yaml`，不在此重複。
+      operationId: patchCampaignStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /campaigns/{campaignId}/prizes:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    put:
+      tags: [campaigns]
+      summary: 配置獎品與機率（整批）[campaign-prizes-001] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT；無憑證／無效 → `401`（`A0203`）、過期 → `401`（`A0202`），
+          **不轉發**。授權（`ROLE_ADMIN`）由下游判定。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PutCampaignPrizesRequestDTO`、response `PutCampaignPrizesResponseDTO`
+        與錯誤清單（`A0000/A0301/A0302/A0303/A0304/A0305/A0400` 等）見 `campaign-service.yaml`，
+        不在此重複。
+      operationId: putCampaignPrizes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /campaigns/{campaignId}/draw:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    post:
+      tags: [campaigns]
+      summary: 抽獎（單次／批次）[campaign-draws-001] → campaign-service
+      description: |
+        **Gateway 行為**
+        - 驗證：受保護（bearerAuth）。需有效 JWT；無憑證／無效 → `401`（`A0203`）、過期 → `401`（`A0202`），
+          **不轉發**。授權（`ROLE_USER`）由下游判定。
+        - 限流：受 per-user / per-IP 限流保護（超限 `429` / `A0500`）。
+        - 冪等 header（UC-3，ADR-005）：**必須帶 `Idempotency-Key: <UUID>`**；缺 → `400`（`A0501`），
+          **不轉發**。gateway 只做**存在性檢查**，不驗證格式、不去重（冪等真正語意在 campaign-service）。
+        - 路由：轉發至 **campaign-service**（不轉寫 payload）。
+        - 身份傳遞：注入 `X-User-Id` / `X-User-Roles`，移除原始 `Authorization`。
+
+        **Payload 來源**：request `PostCampaignDrawRequestDTO`、response `PostCampaignDrawResponseDTO`
+        （首次與 replay 逐位元一致）與錯誤清單（`A0000/A0301/A0306/A0307/A0400` 等）見
+        `campaign-service.yaml`，不在此重複。
+      operationId: postCampaignDraw
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      responses:
+        '200':
+          description: 由 campaign-service 產生（詳見 `campaign-service.yaml`）。回應帶限流 headers。
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyMissing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。
+        token 由 auth-service 簽發；gateway 驗證簽章與時效（UC-1），解出 `sub`/`roles` 後以
+        `X-User-Id` / `X-User-Roles` 傳遞下游，**原始 Authorization 不向下游透傳**。
+        各下游服務以 `/.well-known/jwks.json` 公鑰獨立複驗（defense in depth）。
+        `security: []` 標示 PUBLIC 路徑（跳過身份驗證）。
+
+  parameters:
+    CampaignIdParam:
+      name: campaignId
+      in: path
+      required: true
+      description: 活動唯一識別（正整數，對應 `campaigns.id`）。scope 由下游依路徑決定，不信任 client 傳入值。
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 3
+
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        冪等識別（client 產生之 UUID，一次點擊一個；ADR-005）。
+        gateway 僅做**存在性檢查**（缺 → `400`/`A0501`，不轉發）；不驗證格式、不去重。
+        複合冪等鍵 = `userId + campaignId + idempotencyKey`，冪等去重/replay 由 campaign-service 執行。
+      schema:
+        type: string
+        format: uuid
+
+  headers:
+    X-RateLimit-Limit:
+      description: |
+        當前窗口允許的請求上限。預設：per-user 10 req/s、per-IP 100 req/s
+        （env 可調 `RATE_LIMIT_USER_RPS` / `RATE_LIMIT_IP_RPS`，`docs/api/README.md` §2.6）。
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+      example: 10
+    X-RateLimit-Remaining:
+      description: 當前窗口剩餘可用的請求次數（0 表示已達上限）。
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+      example: 9
+    X-RateLimit-Reset:
+      description: 當前窗口重置時間（Unix epoch 秒，或秒後重置；SD 實作細節）。
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+      example: 1784170800
+
+  responses:
+    Unauthorized:
+      description: |
+        憑證驗證失敗（UC-1，ADR-009）。**不轉發、不觸碰下游**。
+        - 憑證無效（簽章／格式／缺失）→ `A0203`
+        - 憑證過期 → `A0202`
+      headers:
+        X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+        X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+        X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            invalid:
+              summary: 憑證無效／缺失（A0203）
+              value:
+                code: "A0203"
+                message: "憑證無效"
+                data: null
+            expired:
+              summary: 憑證過期（A0202）
+              value:
+                code: "A0202"
+                message: "憑證過期"
+                data: null
+
+    RateLimited:
+      description: |
+        限流超限（UC-2，ADR-003）。per-user / per-IP 任一維度超限即拒，**不轉發、不觸碰下游**。
+        語意為 gateway 邊界控制（`A0500`），與業務層「抽獎次數超限 `A0306`」不同維度。
+      headers:
+        X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+        X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+        X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: "A0500"
+            message: "請求過於頻繁"
+            data: null
+
+    IdempotencyKeyMissing:
+      description: |
+        抽獎請求缺 `Idempotency-Key` header（UC-3，ADR-005）。gateway 僅做存在性檢查，
+        **不轉發至 campaign-service**。冪等去重/replay 語意由 campaign-service 執行。
+      headers:
+        X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+        X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+        X-RateLimit-Reset: { $ref: '#/components/headers/X-RateLimit-Reset' }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: "A0501"
+            message: "缺少 Idempotency-Key"
+            data: null
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      description: |
+        gateway 產出的錯誤回應 envelope（成功與失敗同一結構，`docs/api/README.md` §2.2）。
+        僅承載 gateway 自產的錯誤碼（`A0202`/`A0203`/`A0500`/`A0501`）；
+        業務層錯誤碼由下游產生，見 `auth-service.yaml` / `campaign-service.yaml`。`data` 失敗時為 `null`。
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: 數字錯誤碼字串（gateway 自產：`A0202`/`A0203`/`A0500`/`A0501`）。
+        message:
+          type: string
+          description: 人類可讀錯誤訊息。
+        data:
+          type: object
+          nullable: true
+          description: 失敗時為 `null`。
+      example:
+        code: "A0500"
+        message: "請求過於頻繁"
+        data: null

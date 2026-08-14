@@ -1,0 +1,653 @@
+openapi: 3.0.3
+
+info:
+  title: auth-service — REST 契約
+  version: 1.0.0
+  description: |
+    ## 定位：身份驗證與憑證簽發（REST）
+
+    auth-service 提供**使用者註冊、登入並簽發身份憑證、登入有效期延續（Should）、驗證公鑰公開**
+    四項能力，對應 SA（`docs/specs/auth-service/README.md`）之 UC-1 ~ UC-4，
+    以及 `requirements.md` 的 `FR-AUTH-01 ~ FR-AUTH-06`、`FR-X-01`。
+
+    本文件只涵蓋 `docs/api/README.md` §3 中列出的 4 條 **auth-*** API（即 API ID 清單的 auth 段）：
+    `auth-users-001`、`auth-tokens-001`、`auth-tokens-002`、`auth-keys-001`。
+    其餘 `campaign-*` / `inventory-*` / `gateway-*` 契約見對應 YAML，不在本文件範圍。
+
+    ## 統一規約（詳見 `docs/api/README.md` §2）
+
+    - **回應 envelope（成功與失敗同一結構）**：`{ code, message, data }`。
+      `code` 為**數字錯誤碼字串**（成功 `"00000"`）；`message` 人類可讀；`data` 承載資源（失敗為 `null`）。
+    - **錯誤碼與 HTTP status 對映**：見 `docs/api/README.md` §2.3 與 `docs/rules/錯誤碼.md`。
+      auth 段錯誤碼：`A0100/A0101/A0102/A0103`（註冊）、`A0200/A0201/A0202/A0203`（登入/憑證）、
+      `A0400`（403）。**登入失敗「帳號不存在」與「密碼錯誤」回同一 `A0201`，不洩漏帳號存在性**（AC-AUTH-006）。
+    - **auth scheme**：JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。
+    - **Model 命名**：`{HttpMethod}{Resource}RequestDTO/ResponseDTO`（《OpenAPI Contract Rules》），
+      單複數依語意；`operationId` 與 API ID 對照以 `docs/api/README.md` §3 為準。
+    - **簽發/驗證隔離**（`FR-AUTH-03`）：僅 auth-service 可簽發憑證；其他服務僅能以本文件的
+      `/.well-known/jwks.json` 公開公鑰驗證、**無法偽造**。JWT claims：`sub`、`roles`、`exp`、`iat`、`iss`。
+
+    ## 對外入口
+
+    對外入口為 **API Gateway**（ADR-009）；`/api/v1` 前綴由 Gateway 對映，
+    auth-service 本體路徑以 `servers.url = /api/v1` 呈現。公開端點（register / login / jwks）
+    不需驗證（PUBLIC）；refresh 標記為 USER（Should）。
+
+servers:
+  - url: /api/v1
+    description: |
+      示意前綴。對外實際入口為 API Gateway（ADR-009），`/api/v1` 為 Gateway 對外 surface 前綴；
+      auth-service 內部路徑亦掛於此前綴下，本文件以 `url: /api/v1` + 相對 path 表示。
+
+tags:
+  - name: auth
+    description: 使用者註冊、登入與憑證簽發、驗證公鑰公開
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 使用者註冊 [auth-users-001]
+      description: |
+        建立使用者帳號（UC-1）。預設角色 `ROLE_USER`，密碼以不可逆方式雜湊儲存
+        （`FR-AUTH-06`）；**任何環節不得明文**。使用者不得於註冊時指定或自選角色。
+
+        - 成功：`200`，回傳使用者識別與角色，**絕不含 password / password_hash**（AC-AUTH-001）。
+        - 重複 username / email：`409`（`A0101` / `A0102`），不建立第二個帳號（AC-AUTH-002）。
+        - 輸入驗證失敗（缺欄位 / email 格式非法 / 密碼為空）：`400`（`A0103`），不建立帳號（AC-AUTH-003）。
+
+        **Traceability:** `FR-AUTH-01`, `FR-AUTH-06`, `FR-X-01` / `AC-AUTH-001 ~ 003`
+      operationId: postAuthRegister
+      security: []          # PUBLIC（不需登入）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAuthRegisterRequestDTO'
+      responses:
+        '200':
+          description: 註冊成功，回傳使用者識別與角色（不含密碼／雜湊）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostAuthRegisterResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 1001
+                  username: "alice"
+                  email: "alice@example.com"
+                  roles: ["ROLE_USER"]
+        '400':
+          description: |
+            註冊輸入驗證失敗（缺欄位、email 格式非法、密碼為空）→ `A0103`。
+            一般註冊錯誤亦可用二級碼 `A0100`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0103"
+                message: "輸入驗證失敗"
+                data: null
+        '409':
+          description: |
+            唯一性衝突：username 已存在 → `A0101`；email 已存在 → `A0102`。
+            二級碼 `A0100` 亦可作為通用註冊衝突。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                usernameConflict:
+                  summary: username 已存在（A0101）
+                  value:
+                    code: "A0101"
+                    message: "username 已存在"
+                    data: null
+                emailConflict:
+                  summary: email 已存在（A0102）
+                  value:
+                    code: "A0102"
+                    message: "email 已存在"
+                    data: null
+        '500':
+          description: 系統錯誤 → `B0000`（雜湊/儲存異常等，不得產生半完成資料）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 登入並簽發憑證 [auth-tokens-001]
+      description: |
+        驗證憑證後簽發身份憑證（UC-2）。`username` 欄位可填 **username 或 email**（SA UC-2）。
+
+        - 成功：`200`，回傳 `{ accessToken, tokenType, expiresIn, refreshToken }`。
+          accessToken 為 RS256 JWT，claims 承載 `sub`（userId）、`roles`、`exp`、`iat`、`iss`（ADR-009）。
+        - 失敗：**「帳號不存在」與「密碼錯誤」回同一 `401` / `A0201`**，不洩漏帳號存在性（AC-AUTH-006）。
+        - 憑證承載內容（身份/角色/有效期/簽發時刻/簽發者）全由伺服端決定，client 不得指定（AC-AUTH-011）。
+
+        **Traceability:** `FR-AUTH-02`, `FR-AUTH-03`, `FR-X-01` / `AC-AUTH-004 ~ 006`, `AC-AUTH-012`
+      operationId: postAuthLogin
+      security: []          # PUBLIC（不需登入）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAuthLoginRequestDTO'
+      responses:
+        '200':
+          description: 登入成功，簽發身份憑證（含 refreshToken，Should）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostAuthLoginResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  accessToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0..."
+                  tokenType: "Bearer"
+                  expiresIn: 1800
+                  refreshToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          description: 結構性輸入錯誤（username/password 缺欄位或空白）→ `A0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0000"
+                message: "輸入驗證失敗"
+                data: null
+        '401':
+          description: |
+            登入失敗：**帳號不存在與密碼錯誤回同一碼 `A0201`**（不洩漏存在性）。
+            二級碼 `A0200` 作為登入異常的通用碼。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0201"
+                message: "帳號或密碼錯誤"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新存取憑證 [auth-tokens-002] (Should)
+      description: |
+        以刷新憑證換發新的存取憑證（UC-3，**Should**：prod 前完成，非 POC 必須，`FR-AUTH-04`）。
+
+        - refresh 僅**延長登入有效期**，**不改變身份或權限**（沿用原身份與角色，更新有效期）。
+        - 刷新憑證過期或無效 → `401`（`A0202` 過期 / `A0203` 無效），使用者須重新登入（AC-AUTH-014）。
+        - 本端點標記 USER 角色（需持有有效憑證語境）；刷新憑證由 request body 的 `refreshToken` 承載。
+
+        **Traceability:** `FR-AUTH-04` / `AC-AUTH-013 ~ 014`
+      operationId: postAuthRefresh
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAuthRefreshRequestDTO'
+      responses:
+        '200':
+          description: 刷新成功，回傳新的存取憑證（身份/角色不變）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostAuthRefreshResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  accessToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0..."
+                  tokenType: "Bearer"
+                  expiresIn: 1800
+        '401':
+          description: |
+            刷新憑證過期 → `A0202`；刷新憑證無效（簽章/格式）→ `A0203`。
+            二級碼 `A0200` 作為憑證異常的通用碼。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                expired:
+                  summary: 刷新憑證過期（A0202）
+                  value:
+                    code: "A0202"
+                    message: "憑證過期"
+                    data: null
+                invalid:
+                  summary: 刷新憑證無效（A0203）
+                  value:
+                    code: "A0203"
+                    message: "憑證無效"
+                    data: null
+        '403':
+          description: 權限不足 → `A0400`（未持有有效憑證語境）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0400"
+                message: "權限不足"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /auth/.well-known/jwks.json:
+    get:
+      tags: [auth]
+      summary: 取得驗證公鑰（JWKS） [auth-keys-001]
+      description: |
+        公開簽章公鑰（JWKS，RFC 7517），供 Gateway 與各服務**獨立驗證** JWT 簽章（ADR-009 defense in depth）。
+        不需登入（PUBLIC，`FR-GW-06` / AC-AUTH-008）。
+
+        - 支援多 key 輪替（`keys` 陣列）；RSA key 含 `kty`/`kid`/`n`/`e`/`alg`（及 `use`）。
+        - 僅公開 **public key**，簽發 private key 存放於 GCP Secret Manager（ADR-008），**無法經任何端點取得**（AC-AUTH-007）。
+
+        **Traceability:** `FR-AUTH-03` / `AC-AUTH-007 ~ 008`
+      operationId: getAuthJwks
+      security: []          # PUBLIC（不需登入）
+      responses:
+        '200':
+          description: 成功取得 JWKS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAuthJwksResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  keys:
+                    - kty: "RSA"
+                      use: "sig"
+                      alg: "RS256"
+                      kid: "key-1"
+                      n: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"
+                      e: "AQAB"
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。
+        token 由 auth-service 簽發，Gateway 與各服務以本文件的 `/.well-known/jwks.json` 公鑰獨立複驗。
+
+  schemas:
+    # =====================================================================
+    # 請求 DTO（request body）
+    # =====================================================================
+
+    PostAuthRegisterRequestDTO:
+      type: object
+      description: |
+        註冊請求體（UC-1）。密碼僅存在於此請求的短暫處理中，**不得持久化、記錄或回傳**（`FR-AUTH-06`）；
+        系統以不可逆方式雜湊後儲存。
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 登入帳號名，全系統唯一（對應 `users.username` UNIQUE）。
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: 電子郵件，全系統唯一（對應 `users.email` UNIQUE）。格式非法 → `400`（`A0103`）。
+        password:
+          type: string
+          format: password
+          minLength: 1
+          description: 明文密碼（僅用於本次雜湊，不落盤、不回傳）。
+      example:
+        username: "alice"
+        email: "alice@example.com"
+        password: "S3cure!Pass"
+
+    PostAuthLoginRequestDTO:
+      type: object
+      description: |
+        登入請求體（UC-2）。`username` 欄位可填 **username 或 email**（SA UC-2 Precondition）。
+        憑證承載內容（身份/角色/有效期/簽發時刻/簽發者）由伺服端決定，client 不得指定。
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: 登入識別：username 或 email 皆可。
+        password:
+          type: string
+          format: password
+          minLength: 1
+          description: 明文密碼（僅用於本次比對）。
+      example:
+        username: "alice"
+        password: "S3cure!Pass"
+
+    PostAuthRefreshRequestDTO:
+      type: object
+      description: |
+        刷新請求體（UC-3）。以 `refreshToken` 換發新的存取憑證（Should，`FR-AUTH-04`）。
+        刷新僅延長有效期，不改變身份或權限。
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: 登入時簽發的刷新憑證（JWT）。過期/無效 → `401`（`A0202`/`A0203`）。
+      example:
+        refreshToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # =====================================================================
+    # 資源 DTO（response `data` 承載的資源）
+    # =====================================================================
+
+    UserResourceDTO:
+      type: object
+      description: |
+        使用者資源（註冊成功回傳，UC-1 / AC-AUTH-001）。
+        **絕不含 `password` 或 `password_hash`**（`FR-AUTH-06`）。
+      required:
+        - id
+        - username
+        - email
+        - roles
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 使用者唯一識別（對應 `users.id`，BIGSERIAL；亦為 JWT `sub` claim 來源，ADR-009）。
+        username:
+          type: string
+          description: 登入帳號名（全系統唯一）。
+        email:
+          type: string
+          format: email
+          description: 電子郵件（全系統唯一）。
+        roles:
+          type: array
+          description: 角色清單（授權依據）。註冊預設 `ROLE_USER`，使用者不得自選。
+          items:
+            type: string
+            enum:
+              - ROLE_USER
+              - ROLE_ADMIN
+      example:
+        id: 1001
+        username: "alice"
+        email: "alice@example.com"
+        roles: ["ROLE_USER"]
+
+    TokenResourceDTO:
+      type: object
+      description: |
+        登入成功簽發的憑證集合（UC-2 / AC-AUTH-004）。`accessToken` 為 RS256 JWT，
+        claims 承載 `sub`（userId）、`roles`、`exp`、`iat`、`iss`（ADR-009）。
+        `refreshToken` 標記 **Should**（`FR-AUTH-04`），POC 可先不實作。
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: 存取憑證（JWT RS256）。承載身份/角色/有效期/簽發時刻/簽發者。
+        tokenType:
+          type: string
+          description: "憑證類型，固定 `Bearer`（對應 Authorization header 的 Bearer scheme）。"
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 存取憑證有效秒數（對應 JWT `exp - iat`）。POC 採短 TTL（如 1800，ADR-009 §Consequences）。
+          example: 1800
+        refreshToken:
+          type: string
+          description: |
+            刷新憑證（JWT，**Should**，`FR-AUTH-04`）。用於 `POST /auth/refresh` 延長登入有效期，
+            不改變身份或權限。POC 未實作時此欄位可省略。
+      example:
+        accessToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0..."
+        tokenType: "Bearer"
+        expiresIn: 1800
+        refreshToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    AccessTokenResourceDTO:
+      type: object
+      description: |
+        刷新成功回傳的新存取憑證（UC-3 / AC-AUTH-013）。身份與角色**沿用原憑證**、僅更新有效期。
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: 新的存取憑證（JWT RS256），身份/角色不變。
+        tokenType:
+          type: string
+          description: 憑證類型，固定 `Bearer`。
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          format: int32
+          minimum: 0
+          description: 新存取憑證有效秒數。
+          example: 1800
+      example:
+        accessToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0..."
+        tokenType: "Bearer"
+        expiresIn: 1800
+
+    JwksResourceDTO:
+      type: object
+      description: |
+        JWKS（RFC 7517）承載，供公開取得簽章公鑰（`auth-keys-001`，AC-AUTH-008）。
+        支援多 key 輪替。僅含 public key；private key 存於 GCP Secret Manager（ADR-008），不可經任何端點取得（AC-AUTH-007）。
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: 公鑰清單（RSA）。驗證方以 `kid` 對應 JWT header 之 `kid` 選擇公鑰。
+          items:
+            $ref: '#/components/schemas/JwkResourceDTO'
+      example:
+        keys:
+          - kty: "RSA"
+            use: "sig"
+            alg: "RS256"
+            kid: "key-1"
+            n: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"
+            e: "AQAB"
+
+    JwkResourceDTO:
+      type: object
+      description: |
+        單一 RSA 公鑰（RFC 7517 JWK，`kty=RSA`）。`n`/`e` 為 base64url 編碼的模數與指數。
+      required:
+        - kty
+        - kid
+        - n
+        - e
+        - alg
+      properties:
+        kty:
+          type: string
+          description: key type，固定 `RSA`。
+          example: "RSA"
+        kid:
+          type: string
+          description: key id（用於多 key 輪替時讓驗證方選鑰，對應 JWT header `kid`）。
+          example: "key-1"
+        use:
+          type: string
+          description: 用途，固定 `sig`（簽章用）。
+          example: "sig"
+        alg:
+          type: string
+          description: 簽章演算法，固定 `RS256`。
+          example: "RS256"
+        n:
+          type: string
+          description: RSA modulus（base64url 編碼）。
+        e:
+          type: string
+          description: RSA public exponent（base64url 編碼，通常 `AQAB` = 65537）。
+          example: "AQAB"
+
+    # =====================================================================
+    # 回應 envelope（成功，code/message/data，data 型別明確）
+    # =====================================================================
+
+    PostAuthRegisterResponseDTO:
+      type: object
+      description: 註冊成功回應 envelope。`data` 承載 `UserResourceDTO`（不含密碼/雜湊）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 成功碼，固定 `"00000"`。
+          example: "00000"
+        message:
+          type: string
+          description: 人類可讀訊息，成功通常 `"OK"`。
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/UserResourceDTO'
+
+    PostAuthLoginResponseDTO:
+      type: object
+      description: 登入成功回應 envelope。`data` 承載 `TokenResourceDTO`（含 refreshToken，Should）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/TokenResourceDTO'
+
+    PostAuthRefreshResponseDTO:
+      type: object
+      description: 刷新成功回應 envelope。`data` 承載 `AccessTokenResourceDTO`（身份/角色不變）。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/AccessTokenResourceDTO'
+
+    GetAuthJwksResponseDTO:
+      type: object
+      description: JWKS 回應 envelope。`data` 承載 `JwksResourceDTO`。
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "00000"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: '#/components/schemas/JwksResourceDTO'
+
+    ErrorEnvelope:
+      type: object
+      description: |
+        錯誤回應 envelope（成功與失敗同一結構，`docs/api/README.md` §2.2）。
+        `code` 為數字錯誤碼字串（`Axxxx` 用戶端 / `Bxxxx` 系統 / `Cxxxx` 第三方）；
+        HTTP status 與 `code` 的對映見 `docs/api/README.md` §2.3。`data` 失敗時為 `null`。
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: 數字錯誤碼（如 `A0201`）。
+        message:
+          type: string
+          description: 人類可讀錯誤訊息。
+        data:
+          type: object
+          nullable: true
+          description: 失敗時為 `null`。
+      example:
+        code: "A0201"
+        message: "帳號或密碼錯誤"
+        data: null
