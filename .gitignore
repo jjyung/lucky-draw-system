@@ -1,7 +1,7 @@
 # Gradle
 .gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
+!app/gradle/wrapper/gradle-wrapper.jar
 
 # Java
 *.class
@@ -19,4 +19,4 @@ build/
 secrets/
 
 # openapi-generator 生成物（不入版控）
-**/build/generated/
+app/**/build/generated/

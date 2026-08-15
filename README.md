@@ -79,17 +79,17 @@ lucky-draw-system/
 │   ├── architecture/          # 系統架構圖與設計文件
 │   ├── api/                   # API 說明文件 (OpenAPI / Swagger)
 │   └── db/                    # DB Schema (DDL, DML, ER Diagrams)
-├── services/                  # 微服務原始碼 (Java 21 / Spring Boot 3)
+├── app/                       # 後端微服務原始碼 (Java 21 / Spring Boot 3)
+│   ├── common/                # 通用 DTO, Exception, Utils
 │   ├── api-gateway/
 │   ├── auth-service/
 │   ├── campaign-service/
 │   └── inventory-service/
-├── common/                    # 通用 DTO, Exception, Utils
 ├── docker/                    # Docker Compose 與建置檔
-│   ├── docker-compose.yml     # 地端開發環境 (PostgreSQL, Redis)
-│   └── sqlite/                # 地端輕量測試檔
+│   ├── docker-compose.yml     # 地端開發環境 (PostgreSQL, Redis, RabbitMQ)
+│   └── .env.example
 ├── README.md                  # 專案主說明文件
-└── pom.xml / build.gradle     # 多模組建置檔
+└── AGENTS.md                  # 系統開發流程指引
 ```
 
 ---
@@ -105,8 +105,8 @@ Docker & Docker Compose
 
 啟動步驟
 
-複製環境設定檔：cp .env.example .env
+複製環境設定檔：cp docker/.env.example docker/.env
 
 啟動地端基礎設施：docker-compose -f docker/docker-compose.yml up -d
 
-編譯並執行服務：./mvnw clean package && ./mvnw spring-boot:run
+編譯並執行服務：cd app && ./gradlew build && ./gradlew bootRun

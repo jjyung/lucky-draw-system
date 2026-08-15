@@ -24,7 +24,7 @@ dependencies {
 // openapi-generator：僅生成 DTO + API interface（ADR-011）
 openApiGenerate {
     generatorName = 'spring'
-    inputSpec = "$rootDir/docs/api/openapi/auth-service.yaml"
+    inputSpec = "$rootDir/../docs/api/openapi/auth-service.yaml"
     outputDir = "$buildDir/generated"
     apiPackage = 'com.luckydraw.auth.api'
     modelPackage = 'com.luckydraw.auth.api.model'

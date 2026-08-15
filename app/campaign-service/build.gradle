@@ -33,7 +33,7 @@ dependencyManagement {
 // openapi-generator：僅生成 DTO + API interface（ADR-011）
 openApiGenerate {
     generatorName = 'spring'
-    inputSpec = "$rootDir/docs/api/openapi/campaign-service.yaml"
+    inputSpec = "$rootDir/../docs/api/openapi/campaign-service.yaml"
     outputDir = "$buildDir/generated"
     apiPackage = 'com.luckydraw.campaign.api'
     modelPackage = 'com.luckydraw.campaign.api.model'
