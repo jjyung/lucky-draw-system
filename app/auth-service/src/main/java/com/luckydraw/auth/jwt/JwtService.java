@@ -1,7 +1,7 @@
 package com.luckydraw.auth.jwt;
 
-import com.luckydraw.auth.api.model.JwkResourceDTO;
-import com.luckydraw.auth.api.model.JwksResourceDTO;
+import com.luckydraw.contracts.auth.api.model.JwkResourceDTO;
+import com.luckydraw.contracts.auth.api.model.JwksResourceDTO;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;

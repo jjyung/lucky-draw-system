@@ -1,9 +1,9 @@
 package com.luckydraw.auth.service;
 
-import com.luckydraw.auth.domain.Role;
-import com.luckydraw.auth.domain.RoleRepository;
-import com.luckydraw.auth.domain.User;
-import com.luckydraw.auth.domain.UserRepository;
+import com.luckydraw.auth.model.entity.Role;
+import com.luckydraw.auth.model.entity.User;
+import com.luckydraw.auth.repository.RoleRepository;
+import com.luckydraw.auth.repository.UserRepository;
 import com.luckydraw.auth.error.ErrorCodes;
 import com.luckydraw.auth.jwt.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;

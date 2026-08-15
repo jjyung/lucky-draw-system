@@ -1,6 +1,7 @@
 # ADR-011: 程式碼生成與持久層策略 (Code Generation & Persistence Strategy)
 
 **Date:** 2026-08-15
+**Updated:** 2026-08-15 — 補記「contracts module」：generated DTO/interface 集中於獨立 module（含跨服務事件 DTO），入版控；entity 移至 `model.entity`、repository 獨立 package。
 **Status:** Accepted
 
 ## Context
@@ -18,9 +19,14 @@
 ### 1. OpenAPI → code：openapi-generator，只生成 DTO + API interface
 
 - 採 **openapi-generator**（`openapi-generator-gradle-plugin`），模式為**生成 API interface + request/response DTO**，controller **手寫**並 `implements` 生成的 interface。
-- **適用範圍**：僅 **auth-service** 與 **campaign-service** 兩個「有 REST endpoints」的服務。**gateway-service**（對外 surface 彙整、路由表）與 **inventory-service**（事件契約、無 REST paths）**不**走 codegen。
-- **OpenAPI YAML 是唯一 route/schema 真相**：`operationId`、path、request/response DTO 由 generator 保證與 YAML 一致；controller 只寫業務轉發，不重複定義 route/schema。這與 AGENTS.md §11.3「API ID 是唯一鍵、OpenAPI `operationId` 與 `docs/api/impl/` 檔名一致」的紀律互補。
-- codegen 綁進 build：`generateApi` task 於每次 build 重新產出，YAML 變更自動反映。生成物放 `build/generated`，不入版控。
+- **集中於獨立 `contracts` module**：全 repo 唯一 generated code 歸宿，三個 generate task 各自生成到子 package：
+  - `com.luckydraw.contracts.auth.api(.model)` — auth-service 的 DTO/interface（REST）
+  - `com.luckydraw.contracts.campaign.api(.model)` — campaign-service 的 DTO/interface（REST）
+  - `com.luckydraw.contracts.inventory.api(.model)` — 事件 payload DTO（`InventoryCommitEvent`、`PrizeStockConfiguredEvent`，無 REST paths）
+  - 各 service 以 `implementation project(':contracts')` import；**跨服務共享的事件 DTO（campaign 生產、inventory 消費）因此只有一份，杜絕漂移**。
+- **適用範圍**：auth / campaign / inventory 三個 YAML 皆走 codegen。**gateway-service**（對外 surface 彙整、路由表，非獨立 schema）**不**走 codegen。
+- **生成物入版控**（`contracts/src/generated/`），視為「契約的 code 化身」；配 `hideGenerationTimestamp=true` 使內容不變時 git diff 為空。生成物**勿手改**。
+- **OpenAPI YAML 是唯一 route/schema 真相**：`operationId`、path、request/response DTO 由 generator 保證與 YAML 一致；controller 只寫業務轉發，不重複定義 route/schema。這與 AGENTS.md §11.3「API ID 是唯一鍵」互補。
 
 ### 2. DB schema → ORM：Flyway（DDL 為 migration 真相）+ JPA entity + validate
 

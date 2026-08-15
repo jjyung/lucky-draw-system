@@ -1,9 +1,9 @@
 package com.luckydraw.auth.web;
 
-import com.luckydraw.auth.api.AuthApi;
-import com.luckydraw.auth.api.model.*;
-import com.luckydraw.auth.domain.Role;
-import com.luckydraw.auth.domain.User;
+import com.luckydraw.contracts.auth.api.AuthApi;
+import com.luckydraw.contracts.auth.api.model.*;
+import com.luckydraw.auth.model.entity.Role;
+import com.luckydraw.auth.model.entity.User;
 import com.luckydraw.auth.jwt.JwtKeyProvider;
 import com.luckydraw.auth.jwt.JwtService;
 import com.luckydraw.auth.service.AuthService;

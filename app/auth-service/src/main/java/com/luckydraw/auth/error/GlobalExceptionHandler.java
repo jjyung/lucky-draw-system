@@ -1,6 +1,6 @@
 package com.luckydraw.auth.error;
 
-import com.luckydraw.auth.api.model.ErrorEnvelope;
+import com.luckydraw.contracts.auth.api.model.ErrorEnvelope;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;

@@ -1,5 +1,6 @@
-package com.luckydraw.auth.domain;
+package com.luckydraw.auth.repository;
 
+import com.luckydraw.auth.model.entity.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

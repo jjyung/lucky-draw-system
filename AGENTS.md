@@ -261,11 +261,12 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 
 | 面向 | 工具 | 方式 |
 |------|------|------|
-| API → code | openapi-generator | 只生成 **API interface + DTO**（auth-service、campaign-service 兩服務）；controller 手寫 `implements`。gateway/inventory **不走** codegen |
-| DB schema → ORM | Flyway + JPA | `docs/db/*.md` 的 DDL 直接落成 Flyway migration（DDL 是真相）；JPA entity 手寫，`ddl-auto=validate` 啟動校驗一致 |
+| API → code | openapi-generator | 集中於 **`contracts` module**，生成 **API interface + DTO**（auth/campaign 的 REST + inventory 的事件 payload）；controller 手寫 `implements`。gateway 不走 codegen。生成物入版控、勿手改 |
+| DB schema → ORM | Flyway + JPA | `docs/db/*.md` 的 DDL 直接落成 Flyway migration（DDL 是真相）；JPA entity 手寫（放 `model.entity`）、repository 獨立 package，`ddl-auto=validate` 啟動校驗一致 |
 | dev datasource | H2 `MODE=PostgreSQL` | 讓 migration 共用一份 PostgreSQL 方言 DDL；DataSource 依 env 切換（NFR-04）。**防超抽併發正確性仍以 PostgreSQL（Testcontainers）驗證** |
 
-- 生成物（`build/generated`）**不入版控、勿手改**；手寫與生成的邊界要紀律化。
+- **package 慣例**：entity → `model.entity`；DTO 來自 `contracts`（generated）；手寫傳輸 DTO（若有）→ `model.dto`；value object → `model.vo`；repository → `repository`。
+- 生成物（`contracts/src/generated/`）**入版控、勿手改**；YAML 變更 → 重跑 generate。
 - 詳細理由與 Alternatives 見 [ADR-011](docs/adr/011-code-generation-persistence-strategy.md)。
 
 ### 12.2 單元測試（TDD）

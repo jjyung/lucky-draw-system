@@ -1,4 +1,4 @@
-package com.luckydraw.auth.domain;
+package com.luckydraw.auth.model.entity;
 
 import jakarta.persistence.*;
 

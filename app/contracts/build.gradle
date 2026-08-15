@@ -1,0 +1,97 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+    id 'org.openapi.generator'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:3.3.5"
+    }
+}
+
+// contracts module：全 repo 唯一的 generated DTO/interface 歸宿（ADR-011）。
+// - auth / campaign：生成 API interface + DTO（spring generator, interfaceOnly）
+// - inventory：生成事件 payload DTO（無 REST paths，僅 components.schemas）
+// 生成物入版控（src/generated），作為「契約的 code 化身」，供各 service import。
+// 依賴側以 api 暴露 spring-web / validation / jackson annotation，讓下游 service
+// 能編譯生成的 interface 與 DTO。
+
+def genDir = "$projectDir/src/generated"
+
+tasks.register('generateAuthContract', org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+    generatorName = 'spring'
+    inputSpec = "$rootDir/../docs/api/openapi/auth-service.yaml"
+    outputDir = "$genDir/auth"
+    apiPackage = 'com.luckydraw.contracts.auth.api'
+    modelPackage = 'com.luckydraw.contracts.auth.api.model'
+    configOptions = [
+        interfaceOnly: 'true',
+        useSpringBoot3: 'true',
+        useTags: 'true',
+        openApiNullable: 'false',
+        documentationProvider: 'none',
+        hideGenerationTimestamp: 'true'
+    ]
+}
+
+tasks.register('generateCampaignContract', org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+    generatorName = 'spring'
+    inputSpec = "$rootDir/../docs/api/openapi/campaign-service.yaml"
+    outputDir = "$genDir/campaign"
+    apiPackage = 'com.luckydraw.contracts.campaign.api'
+    modelPackage = 'com.luckydraw.contracts.campaign.api.model'
+    configOptions = [
+        interfaceOnly: 'true',
+        useSpringBoot3: 'true',
+        useTags: 'true',
+        openApiNullable: 'false',
+        documentationProvider: 'none',
+        hideGenerationTimestamp: 'true'
+    ]
+}
+
+tasks.register('generateInventoryContract', org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+    generatorName = 'spring'
+    inputSpec = "$rootDir/../docs/api/openapi/inventory-service.yaml"
+    outputDir = "$genDir/inventory"
+    apiPackage = 'com.luckydraw.contracts.inventory.api'
+    modelPackage = 'com.luckydraw.contracts.inventory.api.model'
+    configOptions = [
+        interfaceOnly: 'true',
+        useSpringBoot3: 'true',
+        useTags: 'true',
+        openApiNullable: 'false',
+        documentationProvider: 'none',
+        hideGenerationTimestamp: 'true'
+    ]
+}
+
+dependencies {
+    // 以 api 暴露，讓下游 service 能編譯生成的 interface（@RequestMapping 等）與 DTO
+    api 'org.springframework:spring-web'
+    api 'org.springframework:spring-context'
+    api 'jakarta.validation:jakarta.validation-api'
+    api 'jakarta.annotation:jakarta.annotation-api'
+    api 'com.fasterxml.jackson.core:jackson-annotations'
+    // 生成的 ApiUtil 用到 HttpServletResponse（由 web server 提供，compileOnly 即可）
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = [
+                "$genDir/auth/src/main/java",
+                "$genDir/campaign/src/main/java",
+                "$genDir/inventory/src/main/java"
+            ]
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('generateAuthContract')
+    dependsOn tasks.named('generateCampaignContract')
+    dependsOn tasks.named('generateInventoryContract')
+}

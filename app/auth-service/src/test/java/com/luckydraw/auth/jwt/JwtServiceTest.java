@@ -1,6 +1,6 @@
 package com.luckydraw.auth.jwt;
 
-import com.luckydraw.auth.api.model.JwksResourceDTO;
+import com.luckydraw.contracts.auth.api.model.JwksResourceDTO;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.RSAKey;
