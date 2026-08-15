@@ -17,9 +17,9 @@
 | [各服務 SA](../specs/) | 業務語意與 Acceptance Criteria |
 | [ADR 索引](../adr/README.md) | 架構決策（尤其 ADR-005/006/007/009/010） |
 | [資料庫設計](../db/README.md) | DB schema（本文件的 field 對照來源） |
-| [《RESTful API 設計指南》](../rules/RESTful%20API%20設計指南（工程實務筆記）.md) | REST 命名/方法/status code/envelope 規約 |
-| [《OpenAPI Contract Rules》](../rules/OpenAPI%20Contract%20Rules.md) | API ID / operationId / Model 命名規約 |
-| [《錯誤碼》](../rules/錯誤碼.md) | 數字錯誤碼分段規約 |
+| [《RESTful API 設計指南》](../rules/rest-api.md) | REST 命名/方法/status code/envelope 規約 |
+| [《OpenAPI Contract Rules》](../rules/openapi-contract.md) | API ID / operationId / Model 命名規約 |
+| [《錯誤碼》](../rules/error-codes.md) | 數字錯誤碼分段規約 |
 
 ---
 

@@ -1,7 +1,7 @@
 package com.luckydraw.auth.service;
 
-import com.luckydraw.auth.model.entity.Role;
-import com.luckydraw.auth.model.entity.User;
+import com.luckydraw.auth.model.entity.RoleEntity;
+import com.luckydraw.auth.model.entity.UserEntity;
 import com.luckydraw.auth.repository.RoleRepository;
 import com.luckydraw.auth.repository.UserRepository;
 import com.luckydraw.auth.error.ErrorCodes;
@@ -41,7 +41,7 @@ public class AuthService {
      * 註冊（UC-1）。預設 ROLE_USER，回傳建立的使用者（不含密碼雜湊）。
      */
     @Transactional
-    public User register(String username, String email, String rawPassword) {
+    public UserEntity register(String username, String email, String rawPassword) {
         if (userRepository.existsByUsername(username)) {
             throw ErrorCodes.usernameExists();
         }
@@ -49,10 +49,10 @@ public class AuthService {
             throw ErrorCodes.emailExists();
         }
 
-        Role defaultRole = roleRepository.findByCode("ROLE_USER")
+        RoleEntity defaultRole = roleRepository.findByCode("ROLE_USER")
                 .orElseThrow(() -> new IllegalStateException("ROLE_USER 角色不存在（seed 資料缺失）"));
 
-        User user = new User(username, email, passwordEncoder.encode(rawPassword));
+        UserEntity user = new UserEntity(username, email, passwordEncoder.encode(rawPassword));
         user.addRole(defaultRole);
         return userRepository.save(user);
     }
@@ -62,7 +62,7 @@ public class AuthService {
      */
     @Transactional(readOnly = true)
     public String login(String usernameOrEmail, String rawPassword) {
-        User user = userRepository.findByUsername(usernameOrEmail)
+        UserEntity user = userRepository.findByUsername(usernameOrEmail)
                 .or(() -> userRepository.findByEmail(usernameOrEmail))
                 .orElse(null);
 
@@ -76,7 +76,7 @@ public class AuthService {
         }
 
         List<String> roles = user.getRoles().stream()
-                .map(Role::getCode)
+                .map(RoleEntity::getCode)
                 .toList();
         return jwtService.issueAccessToken(user.getId(), roles);
     }

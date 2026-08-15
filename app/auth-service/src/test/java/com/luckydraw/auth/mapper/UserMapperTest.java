@@ -1,7 +1,7 @@
 package com.luckydraw.auth.mapper;
 
-import com.luckydraw.auth.model.entity.Role;
-import com.luckydraw.auth.model.entity.User;
+import com.luckydraw.auth.model.entity.RoleEntity;
+import com.luckydraw.auth.model.entity.UserEntity;
 import com.luckydraw.contracts.auth.api.model.UserResourceDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,8 +20,8 @@ class UserMapperTest {
     @Test
     @DisplayName("基本欄位映射正確")
     void toResource_mapsBasicFields() {
-        User user = new User("alice", "alice@example.com", "$2y$hash");
-        user.addRole(new Role("ROLE_USER", "一般使用者"));
+        UserEntity user = new UserEntity("alice", "alice@example.com", "$2y$hash");
+        user.addRole(new RoleEntity("ROLE_USER", "一般使用者"));
 
         UserResourceDTO dto = userMapper.toResource(user);
 
@@ -32,9 +32,9 @@ class UserMapperTest {
     @Test
     @DisplayName("roles 正確轉換為 RolesEnum（Role.code → RolesEnum）")
     void toResource_mapsRoles() {
-        User user = new User("alice", "alice@example.com", "$2y$hash");
-        user.addRole(new Role("ROLE_USER", "一般使用者"));
-        user.addRole(new Role("ROLE_ADMIN", "管理人員"));
+        UserEntity user = new UserEntity("alice", "alice@example.com", "$2y$hash");
+        user.addRole(new RoleEntity("ROLE_USER", "一般使用者"));
+        user.addRole(new RoleEntity("ROLE_ADMIN", "管理人員"));
 
         UserResourceDTO dto = userMapper.toResource(user);
 
@@ -46,7 +46,7 @@ class UserMapperTest {
     @Test
     @DisplayName("密碼雜湊絕不進入 DTO（DTO 無此欄位，FR-AUTH-06）")
     void toResource_neverExposesPasswordHash() {
-        User user = new User("alice", "alice@example.com", "$2y$secret-hash");
+        UserEntity user = new UserEntity("alice", "alice@example.com", "$2y$secret-hash");
 
         UserResourceDTO dto = userMapper.toResource(user);
 

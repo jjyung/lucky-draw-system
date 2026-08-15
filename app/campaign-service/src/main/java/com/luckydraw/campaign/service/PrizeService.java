@@ -1,8 +1,8 @@
 package com.luckydraw.campaign.service;
 
 import com.luckydraw.campaign.error.ErrorCodes;
-import com.luckydraw.campaign.model.entity.Campaign;
-import com.luckydraw.campaign.model.entity.Prize;
+import com.luckydraw.campaign.model.entity.CampaignEntity;
+import com.luckydraw.campaign.model.entity.PrizeEntity;
 import com.luckydraw.campaign.repository.CampaignRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,8 +33,8 @@ public class PrizeService {
      * 整批覆蓋配置獎品。驗證通過才生效；失敗拋 ApiException，原配置不變。
      */
     @Transactional
-    public List<Prize> configure(Long campaignId, List<Prize> prizes) {
-        Campaign campaign = campaignRepository.findById(campaignId)
+    public List<PrizeEntity> configure(Long campaignId, List<PrizeEntity> prizes) {
+        CampaignEntity campaign = campaignRepository.findById(campaignId)
                 .orElseThrow(ErrorCodes::campaignNotFound);
         if (campaign.isEnded()) {
             throw ErrorCodes.statusConflict("已結束的活動不可配置獎品");
@@ -48,20 +48,20 @@ public class PrizeService {
     /**
      * 純驗證邏輯（不變量，供單元測試直接驗證）。
      */
-    public static void validate(List<Prize> prizes) {
+    public static void validate(List<PrizeEntity> prizes) {
         if (prizes == null || prizes.isEmpty()) {
             throw ErrorCodes.probabilitySumInvalid();
         }
 
         boolean hasThankYou = false;
         BigDecimal sum = BigDecimal.ZERO;
-        for (Prize p : prizes) {
+        for (PrizeEntity p : prizes) {
             BigDecimal prob = p.getProbability();
             if (prob == null || prob.compareTo(BigDecimal.ZERO) < 0 || prob.compareTo(new BigDecimal("100")) > 0) {
                 throw ErrorCodes.probabilityOutOfRange();
             }
             sum = sum.add(prob);
-            if (p.getType() == Prize.Type.THANK_YOU) {
+            if (p.getType() == PrizeEntity.Type.THANK_YOU) {
                 hasThankYou = true;
             }
         }

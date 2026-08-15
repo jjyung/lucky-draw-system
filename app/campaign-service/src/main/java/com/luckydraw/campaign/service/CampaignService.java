@@ -1,7 +1,7 @@
 package com.luckydraw.campaign.service;
 
 import com.luckydraw.campaign.error.ErrorCodes;
-import com.luckydraw.campaign.model.entity.Campaign;
+import com.luckydraw.campaign.model.entity.CampaignEntity;
 import com.luckydraw.campaign.repository.CampaignRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,18 +23,18 @@ public class CampaignService {
     }
 
     @Transactional
-    public Campaign create(String name, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
+    public CampaignEntity create(String name, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
         if (startTime == null || endTime == null || !endTime.isAfter(startTime)) {
             throw ErrorCodes.statusConflict("結束時間必須晚於開始時間");
         }
-        Campaign campaign = new Campaign(name, startTime, endTime, drawLimit);
+        CampaignEntity campaign = new CampaignEntity(name, startTime, endTime, drawLimit);
         return campaignRepository.save(campaign);
     }
 
     @Transactional
-    public Campaign update(Long campaignId, String name, OffsetDateTime startTime,
+    public CampaignEntity update(Long campaignId, String name, OffsetDateTime startTime,
                            OffsetDateTime endTime, Integer drawLimit) {
-        Campaign campaign = getCampaign(campaignId);
+        CampaignEntity campaign = getCampaign(campaignId);
         if (campaign.isEnded()) {
             throw ErrorCodes.statusConflict("已結束的活動不可編輯");
         }
@@ -46,8 +46,8 @@ public class CampaignService {
     }
 
     @Transactional
-    public Campaign transitionStatus(Long campaignId, Campaign.Status target) {
-        Campaign campaign = getCampaign(campaignId);
+    public CampaignEntity transitionStatus(Long campaignId, CampaignEntity.Status target) {
+        CampaignEntity campaign = getCampaign(campaignId);
         switch (target) {
             case ACTIVE -> campaign.activate();
             case ENDED -> campaign.end();
@@ -58,12 +58,12 @@ public class CampaignService {
     }
 
     @Transactional(readOnly = true)
-    public List<Campaign> listAll() {
+    public List<CampaignEntity> listAll() {
         return campaignRepository.findAllByOrderByStartTimeAsc();
     }
 
     @Transactional(readOnly = true)
-    public Campaign getCampaign(Long campaignId) {
+    public CampaignEntity getCampaign(Long campaignId) {
         return campaignRepository.findById(campaignId)
                 .orElseThrow(ErrorCodes::campaignNotFound);
     }

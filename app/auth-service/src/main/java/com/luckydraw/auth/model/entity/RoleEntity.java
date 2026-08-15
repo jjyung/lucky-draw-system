@@ -8,7 +8,7 @@ import jakarta.persistence.*;
  */
 @Entity
 @Table(name = "roles")
-public class Role {
+public class RoleEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,10 +20,10 @@ public class Role {
     @Column(nullable = false, length = 64)
     private String name;
 
-    protected Role() {
+    protected RoleEntity() {
     }
 
-    public Role(String code, String name) {
+    public RoleEntity(String code, String name) {
         this.code = code;
         this.name = name;
     }

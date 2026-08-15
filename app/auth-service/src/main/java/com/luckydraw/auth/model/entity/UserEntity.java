@@ -14,7 +14,7 @@ import java.util.Set;
         @UniqueConstraint(name = "uq_users_username", columnNames = "username"),
         @UniqueConstraint(name = "uq_users_email", columnNames = "email")
 })
-public class User {
+public class UserEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,12 +39,12 @@ public class User {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
-    private Set<Role> roles = new HashSet<>();
+    private Set<RoleEntity> roles = new HashSet<>();
 
-    protected User() {
+    protected UserEntity() {
     }
 
-    public User(String username, String email, String passwordHash) {
+    public UserEntity(String username, String email, String passwordHash) {
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
@@ -77,11 +77,11 @@ public class User {
         return createdAt;
     }
 
-    public Set<Role> getRoles() {
+    public Set<RoleEntity> getRoles() {
         return roles;
     }
 
-    public void addRole(Role role) {
+    public void addRole(RoleEntity role) {
         this.roles.add(role);
     }
 }

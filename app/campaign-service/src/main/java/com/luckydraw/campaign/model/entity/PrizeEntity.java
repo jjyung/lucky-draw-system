@@ -9,7 +9,7 @@ import java.math.BigDecimal;
  */
 @Entity
 @Table(name = "prizes")
-public class Prize {
+public class PrizeEntity {
 
     public enum Type {
         PRIZE, THANK_YOU
@@ -21,7 +21,7 @@ public class Prize {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "campaign_id", nullable = false)
-    private Campaign campaign;
+    private CampaignEntity campaign;
 
     @Column(nullable = false, length = 128)
     private String name;
@@ -39,10 +39,10 @@ public class Prize {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
 
-    protected Prize() {
+    protected PrizeEntity() {
     }
 
-    public Prize(Campaign campaign, String name, Type type, BigDecimal probability, Integer stock, Integer sortOrder) {
+    public PrizeEntity(CampaignEntity campaign, String name, Type type, BigDecimal probability, Integer stock, Integer sortOrder) {
         this.campaign = campaign;
         this.name = name;
         this.type = type;
@@ -55,7 +55,7 @@ public class Prize {
         return id;
     }
 
-    public Campaign getCampaign() {
+    public CampaignEntity getCampaign() {
         return campaign;
     }
 

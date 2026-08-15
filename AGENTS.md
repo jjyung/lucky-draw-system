@@ -296,10 +296,26 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 
 ### 12.3 單元測試（TDD）
 
-完整規約見 [`docs/rules/單元測試.md`](docs/rules/單元測試.md)。核心四條：
+完整規約見 [`docs/rules/unit-testing.md`](docs/rules/unit-testing.md)。核心四條：
 
 1. **unit = 單一行為單元，不是方法**；測試保護**不變量**，不是 coverage。
 2. **寫前先問**：「這條規則改錯，哪個業務受害？」受害的那個，才值得測。不變量從 SA 的 business rule / AC 擷取。
 3. **mock 預設 classical**：Stub 給固定答案 + state verification；少用 behavior verification（鎖實作）。需 mock DB/HTTP/MQ 才能測 → 先重構分離，不是補 mock。
 4. **AI 生成測試三坑**（審查用）：鏡射實作、重述錯誤邏輯、全 happy path。以三問過篩（換一種正確寫法還過嗎？需求誤解抓得到嗎？唯一會紅的理由是「有人改實作」嗎？）。
 5. **TDD 節奏**：Red→Green→Refactor，小步快跑；compile suite 秒級、commit suite ≤10 分鐘。
+
+---
+
+## 13. Rules 索引 (Rules Index)
+
+> 編程規約的**唯一來源**（`docs/rules/`）。動筆寫 code 前依需查閱；與 code 衝突時以規則為準（§7.3 回寫）。
+
+| Rule | 檔案 | 定位 |
+|------|------|------|
+| Naming | [`docs/rules/naming.md`](docs/rules/naming.md) | 分層命名；**JPA entity 一律 `XxxEntity` 後綴**（dirty-checking 警示）；generated enum 例外不加後綴 |
+| Exceptions | [`docs/rules/exceptions.md`](docs/rules/exceptions.md) | 業務異常 `ApiException extends RuntimeException` 不宣告 throws；`@RestControllerAdvice` 兜底轉 envelope |
+| Logging | [`docs/rules/logging.md`](docs/rules/logging.md) | SLF4J + Logback；佔位符 `{}`；敏感資訊不落 log |
+| Error Codes | [`docs/rules/error-codes.md`](docs/rules/error-codes.md) | 分段規約；**唯一碼表在 [`docs/api/error-list.md`](docs/api/error-list.md)** |
+| Unit Testing | [`docs/rules/unit-testing.md`](docs/rules/unit-testing.md) | 保護不變量、classical-first mock、AI 三坑 |
+| OpenAPI Contract | [`docs/rules/openapi-contract.md`](docs/rules/openapi-contract.md) | API ID / operationId / Model 命名 |
+| REST API | [`docs/rules/rest-api.md`](docs/rules/rest-api.md) | REST 命名/方法/envelope；POC 不分頁 |

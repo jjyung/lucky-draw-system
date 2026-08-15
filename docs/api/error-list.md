@@ -1,6 +1,6 @@
 # 錯誤碼總表 (Error Code List)
 
-> 全系統**唯一錯誤碼來源**（數字碼），用於 response envelope 的 `code` 欄位。分段規約見 [`docs/rules/錯誤碼.md`](../rules/錯誤碼.md)，HTTP status 對映依《RESTful API 設計指南》§6.2。
+> 全系統**唯一錯誤碼來源**（數字碼），用於 response envelope 的 `code` 欄位。分段規約見 [`docs/rules/error-codes.md`](../rules/error-codes.md)，HTTP status 對映依《RESTful API 設計指南》§6.2。
 > 各 API 實作檔案（`docs/api/impl/<api-id>.md`）只引用本表已定義的 code，**不得自行新增語意重複的 code**。
 
 | 錯誤碼 | HTTP | 語意 | 來源服務 | 對應 API |

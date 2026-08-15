@@ -53,7 +53,7 @@
 
 - **codegen 產物需被視為「生成、勿手改」**：controller 手寫、DTO/interface 生成，兩者邊界要紀律化（生成檔放 `build/generated`，不 commit，避免手改生成物）。
 - **H2 非 PostgreSQL 完全等價**：`WHERE stock > 0` 條件更新的並發語意與 row lock 行為在 H2 與 PostgreSQL 不同（ADR-002 後果），H2 只做功能驗證，併發正確性仍須 PostgreSQL。
-- **validate 的侷限**：`hibernate.ddl-auto=validate` 能抓「entity 與 schema 型別/欄位 mismatch」，但抓不到「業務語意漂移」（如 CHECK 值域），後者靠 unit test 釘住（見 `docs/rules/單元測試.md`）。
+- **validate 的侷限**：`hibernate.ddl-auto=validate` 能抓「entity 與 schema 型別/欄位 mismatch」，但抓不到「業務語意漂移」（如 CHECK 值域），後者靠 unit test 釘住（見 `docs/rules/unit-testing.md`）。
 
 ## Alternatives
 

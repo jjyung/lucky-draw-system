@@ -11,7 +11,7 @@ import java.util.List;
  */
 @Entity
 @Table(name = "campaigns")
-public class Campaign {
+public class CampaignEntity {
 
     public enum Status {
         DRAFT, ACTIVE, ENDED
@@ -45,12 +45,12 @@ public class Campaign {
 
     @OneToMany(mappedBy = "campaign", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
-    private List<Prize> prizes = new ArrayList<>();
+    private List<PrizeEntity> prizes = new ArrayList<>();
 
-    protected Campaign() {
+    protected CampaignEntity() {
     }
 
-    public Campaign(String name, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
+    public CampaignEntity(String name, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
         this.name = name;
         this.startTime = startTime;
         this.endTime = endTime;
@@ -124,7 +124,7 @@ public class Campaign {
         return updatedAt;
     }
 
-    public List<Prize> getPrizes() {
+    public List<PrizeEntity> getPrizes() {
         return prizes;
     }
 
@@ -135,7 +135,7 @@ public class Campaign {
         this.drawLimit = drawLimit;
     }
 
-    public void replacePrizes(List<Prize> newPrizes) {
+    public void replacePrizes(List<PrizeEntity> newPrizes) {
         this.prizes.clear();
         this.prizes.addAll(newPrizes);
     }

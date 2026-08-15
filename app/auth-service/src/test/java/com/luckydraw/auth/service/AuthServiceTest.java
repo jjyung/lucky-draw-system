@@ -1,7 +1,7 @@
 package com.luckydraw.auth.service;
 
-import com.luckydraw.auth.model.entity.Role;
-import com.luckydraw.auth.model.entity.User;
+import com.luckydraw.auth.model.entity.RoleEntity;
+import com.luckydraw.auth.model.entity.UserEntity;
 import com.luckydraw.auth.repository.RoleRepository;
 import com.luckydraw.auth.repository.UserRepository;
 import com.luckydraw.auth.error.ApiException;
@@ -50,7 +50,7 @@ class AuthServiceTest {
     @DisplayName("註冊：密碼以 BCrypt 雜湊儲存，非明文（FR-AUTH-06）")
     void register_storesBcryptHash_notPlaintext() {
         String rawPassword = "S3cure!Pass";
-        User user = authService.register("alice", "alice@example.com", rawPassword);
+        UserEntity user = authService.register("alice", "alice@example.com", rawPassword);
 
         assertThat(user.getPasswordHash()).isNotEqualTo(rawPassword);
         assertThat(user.getPasswordHash()).startsWith("$2");
@@ -60,9 +60,9 @@ class AuthServiceTest {
     @Test
     @DisplayName("註冊：預設角色 ROLE_USER")
     void register_assignsDefaultRoleUser() {
-        User user = authService.register("alice", "alice@example.com", "S3cure!Pass");
+        UserEntity user = authService.register("alice", "alice@example.com", "S3cure!Pass");
 
-        assertThat(user.getRoles()).extracting(Role::getCode).containsExactly("ROLE_USER");
+        assertThat(user.getRoles()).extracting(RoleEntity::getCode).containsExactly("ROLE_USER");
     }
 
     @Test

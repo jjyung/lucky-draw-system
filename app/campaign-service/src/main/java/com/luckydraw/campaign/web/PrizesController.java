@@ -1,8 +1,8 @@
 package com.luckydraw.campaign.web;
 
 import com.luckydraw.campaign.mapper.CampaignMapper;
-import com.luckydraw.campaign.model.entity.Campaign;
-import com.luckydraw.campaign.model.entity.Prize;
+import com.luckydraw.campaign.model.entity.CampaignEntity;
+import com.luckydraw.campaign.model.entity.PrizeEntity;
 import com.luckydraw.campaign.service.CampaignService;
 import com.luckydraw.campaign.service.PrizeService;
 import com.luckydraw.contracts.campaign.api.PrizesApi;
@@ -33,10 +33,10 @@ public class PrizesController implements PrizesApi {
     @Override
     public ResponseEntity<PutCampaignPrizesResponseDTO> putCampaignPrizes(
             Long campaignId, PutCampaignPrizesRequestDTO request) {
-        Campaign campaign = campaignService.getCampaign(campaignId);
+        CampaignEntity campaign = campaignService.getCampaign(campaignId);
 
-        List<Prize> prizes = toEntities(campaign, request.getPrizes());
-        List<Prize> configured = prizeService.configure(campaignId, prizes);
+        List<PrizeEntity> prizes = toEntities(campaign, request.getPrizes());
+        List<PrizeEntity> configured = prizeService.configure(campaignId, prizes);
 
         PrizesConfigResourceDTO config = new PrizesConfigResourceDTO()
                 .campaignId(campaignId)
@@ -49,13 +49,13 @@ public class PrizesController implements PrizesApi {
         return ResponseEntity.ok(response);
     }
 
-    private List<Prize> toEntities(Campaign campaign, List<PrizeInputDTO> inputs) {
-        List<Prize> prizes = new ArrayList<>();
+    private List<PrizeEntity> toEntities(CampaignEntity campaign, List<PrizeInputDTO> inputs) {
+        List<PrizeEntity> prizes = new ArrayList<>();
         int order = 0;
         for (PrizeInputDTO input : inputs) {
-            Prize.Type type = Prize.Type.valueOf(input.getType().getValue());
-            int stock = (type == Prize.Type.THANK_YOU) ? 0 : input.getQuantity();
-            prizes.add(new Prize(
+            PrizeEntity.Type type = PrizeEntity.Type.valueOf(input.getType().getValue());
+            int stock = (type == PrizeEntity.Type.THANK_YOU) ? 0 : input.getQuantity();
+            prizes.add(new PrizeEntity(
                     campaign,
                     input.getName(),
                     type,

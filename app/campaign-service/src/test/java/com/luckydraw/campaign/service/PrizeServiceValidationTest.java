@@ -1,8 +1,7 @@
 package com.luckydraw.campaign.service;
 
 import com.luckydraw.campaign.error.ApiException;
-import com.luckydraw.campaign.model.entity.Campaign;
-import com.luckydraw.campaign.model.entity.Prize;
+import com.luckydraw.campaign.model.entity.PrizeEntity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,11 +16,11 @@ import static org.assertj.core.api.Assertions.*;
  */
 class PrizeServiceValidationTest {
 
-    private Prize prize(String type, String probability, int stock) {
-        return new Prize(null, "p", Prize.Type.valueOf(type), new BigDecimal(probability), stock, 0);
+    private PrizeEntity prize(String type, String probability, int stock) {
+        return new PrizeEntity(null, "p", PrizeEntity.Type.valueOf(type), new BigDecimal(probability), stock, 0);
     }
 
-    private List<Prize> validPrizes() {
+    private List<PrizeEntity> validPrizes() {
         return List.of(
                 prize("PRIZE", "5.00", 1),
                 prize("PRIZE", "15.00", 10),
@@ -38,7 +37,7 @@ class PrizeServiceValidationTest {
     @Test
     @DisplayName("機率總和 ≠ 100% → A0303（AC-CAMP-001）")
     void sumNotHundred_rejected() {
-        List<Prize> prizes = List.of(
+        List<PrizeEntity> prizes = List.of(
                 prize("PRIZE", "30.00", 1),
                 prize("THANK_YOU", "60.00", 0)); // 總和 90
 
@@ -51,7 +50,7 @@ class PrizeServiceValidationTest {
     @Test
     @DisplayName("機率越界 [0,100] → A0304（AC-CAMP-002）")
     void probabilityOutOfRange_rejected() {
-        List<Prize> prizes = List.of(
+        List<PrizeEntity> prizes = List.of(
                 prize("PRIZE", "101.00", 1),
                 prize("THANK_YOU", "-1.00", 0));
 
@@ -64,7 +63,7 @@ class PrizeServiceValidationTest {
     @Test
     @DisplayName("缺 THANK_YOU → A0305（AC-CAMP-003）")
     void missingThankYou_rejected() {
-        List<Prize> prizes = List.of(
+        List<PrizeEntity> prizes = List.of(
                 prize("PRIZE", "50.00", 1),
                 prize("PRIZE", "50.00", 1)); // 總和 100 但無 THANK_YOU
 

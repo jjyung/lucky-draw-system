@@ -18,7 +18,7 @@ info:
 
     - **回應 envelope（成功與失敗同一結構）**：`{ code, message, data }`。
       `code` 為**數字錯誤碼字串**（成功 `"00000"`）；`message` 人類可讀；`data` 承載資源（失敗為 `null`）。
-    - **錯誤碼與 HTTP status 對映**：見 `docs/api/README.md` §2.3 與 `docs/rules/錯誤碼.md`。
+    - **錯誤碼與 HTTP status 對映**：見 `docs/api/README.md` §2.3 與 `docs/rules/error-codes.md`。
       auth 段錯誤碼：`A0100/A0101/A0102/A0103`（註冊）、`A0200/A0201/A0202/A0203`（登入/憑證）、
       `A0400`（403）。**登入失敗「帳號不存在」與「密碼錯誤」回同一 `A0201`，不洩漏帳號存在性**（AC-AUTH-006）。
     - **auth scheme**：JWT **RS256** bearer token（ADR-009），`Authorization: Bearer <token>`。

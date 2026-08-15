@@ -2,7 +2,7 @@ package com.luckydraw.campaign.web;
 
 import com.luckydraw.campaign.error.ErrorCodes;
 import com.luckydraw.campaign.mapper.CampaignMapper;
-import com.luckydraw.campaign.model.entity.Campaign;
+import com.luckydraw.campaign.model.entity.CampaignEntity;
 import com.luckydraw.campaign.service.CampaignService;
 import com.luckydraw.contracts.campaign.api.CampaignsApi;
 import com.luckydraw.contracts.campaign.api.model.*;
@@ -34,7 +34,7 @@ public class CampaignsController implements CampaignsApi {
 
     @Override
     public ResponseEntity<GetCampaignByIdResponseDTO> getCampaignById(Long campaignId) {
-        Campaign campaign = campaignService.getCampaign(campaignId);
+        CampaignEntity campaign = campaignService.getCampaign(campaignId);
         GetCampaignByIdResponseDTO response = new GetCampaignByIdResponseDTO()
                 .code("00000")
                 .message("OK")
@@ -44,7 +44,7 @@ public class CampaignsController implements CampaignsApi {
 
     @Override
     public ResponseEntity<PostCampaignsResponseDTO> postCampaigns(PostCampaignsRequestDTO request) {
-        Campaign campaign = campaignService.create(
+        CampaignEntity campaign = campaignService.create(
                 request.getName(), request.getStartTime(), request.getEndTime(), request.getDrawLimit());
         PostCampaignsResponseDTO response = new PostCampaignsResponseDTO()
                 .code("00000")
@@ -55,7 +55,7 @@ public class CampaignsController implements CampaignsApi {
 
     @Override
     public ResponseEntity<PutCampaignByIdResponseDTO> putCampaignById(Long campaignId, PutCampaignByIdRequestDTO request) {
-        Campaign campaign = campaignService.update(
+        CampaignEntity campaign = campaignService.update(
                 campaignId, request.getName(), request.getStartTime(), request.getEndTime(), request.getDrawLimit());
         PutCampaignByIdResponseDTO response = new PutCampaignByIdResponseDTO()
                 .code("00000")
@@ -67,8 +67,8 @@ public class CampaignsController implements CampaignsApi {
     @Override
     public ResponseEntity<PatchCampaignStatusResponseDTO> patchCampaignStatus(
             Long campaignId, PatchCampaignStatusRequestDTO request) {
-        Campaign.Status target = toStatus(request.getStatus());
-        Campaign campaign = campaignService.transitionStatus(campaignId, target);
+        CampaignEntity.Status target = toStatus(request.getStatus());
+        CampaignEntity campaign = campaignService.transitionStatus(campaignId, target);
         PatchCampaignStatusResponseDTO response = new PatchCampaignStatusResponseDTO()
                 .code("00000")
                 .message("OK")
@@ -76,7 +76,7 @@ public class CampaignsController implements CampaignsApi {
         return ResponseEntity.ok(response);
     }
 
-    private Campaign.Status toStatus(CampaignStatus status) {
-        return Campaign.Status.valueOf(status.getValue());
+    private CampaignEntity.Status toStatus(CampaignStatus status) {
+        return CampaignEntity.Status.valueOf(status.getValue());
     }
 }
