@@ -29,7 +29,7 @@
 ```sql
 -- =============================================================
 -- Auth DB — PostgreSQL DDL
--- Service: auth-service   (ADR-002 Database-Per-Service)
+-- Service: auth-service   (ADR-002 schema-per-service)
 -- 密碼安全: FR-AUTH-06 (不可逆雜湊)  權限分級: FR-AUTH-05
 -- =============================================================
 

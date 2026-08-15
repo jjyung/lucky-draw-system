@@ -30,7 +30,7 @@
 ```sql
 -- =============================================================
 -- Inventory DB — PostgreSQL DDL
--- Service: inventory-service   (ADR-002 Database-Per-Service)
+-- Service: inventory-service   (ADR-002 schema-per-service)
 -- 防超抽: ADR-006（條件更新為真相）  冪等: ADR-005/006
 -- =============================================================
 

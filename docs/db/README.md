@@ -7,13 +7,13 @@
 | **狀態 (Status)** | Proposed |
 | **日期 (Date)** | 2026-08-14 |
 | **角色 (Layer)** | SD — Technical Design（資料表、型別、constraint、index、FK、migration） |
-| **範圍** | Auth DB / Campaign DB / Inventory DB 三套獨立資料庫的 DDL、DML、ER |
+| **範圍** | auth / campaign / inventory 三套 schema（每服務自有）的 DDL、DML、ER |
 
 ### 關聯文件 (Related Documents)
 
 | 文件 | 說明 |
 |------|------|
-| [ADR-002](../adr/002-database-per-service.md) | Database-Per-Service、table 所有權、dev SQLite/H2 vs prod PostgreSQL |
+| [ADR-002](../adr/002-database-per-service.md) | 資料所有權隔離（每服務自有 schema）、table 所有權、dev SQLite/H2 vs prod PostgreSQL |
 | [ADR-005](../adr/005-anti-double-draw-idempotency.md) | 複合冪等鍵 `UNIQUE(user_id, campaign_id, idempotency_key)` |
 | [ADR-006](../adr/006-anti-overselling.md) | 條件更新 `UPDATE ... WHERE stock > 0`、補償、對帳 |
 | [auth-service SA](../specs/auth-service/README.md) | 業務資料字典（§5.1 users） |
@@ -36,22 +36,22 @@
 
 ---
 
-## 3. Database-Per-Service 總覽 (Rationale Summary)
+## 3. 資料所有權與隔離 總覽 (Rationale Summary)
 
-依 [ADR-002](../adr/002-database-per-service.md)：**每個 service 擁有並只操作自己的資料庫，禁止跨 service 直接存取他人 DB**。三個資料域（auth / campaign / inventory）的查詢模式與擴展需求不同，獨立 DB 讓 schema、index、連線池、擴展規格各自調校，故障互相隔離。
+依 [ADR-002](../adr/002-database-per-service.md)：**每個 service 擁有並只操作自己的 schema（auth / campaign / inventory），禁止跨 schema 直接存取**——隔離以專屬 role + `search_path` + GRANT 在 DB 層強制。跨服務一律經 API / event（ADR-007），無跨 schema FK、無跨服務 transaction。三個資料域的查詢模式與擴展需求不同，schema 內 index、參數仍可各自調校。實體部署（單/多 instance、schema 或 database）屬 infra 細節（ADR-008），不影響此隔離模型。
 
-| Service | DB | 核心 Table | 熱點特性 |
-|---------|-----|-----------|---------|
-| auth-service | Auth DB | `users`、`roles`、`user_roles` | 中頻 OLTP，讀多寫少 |
-| campaign-service | Campaign DB | `campaigns`、`prizes`、`draw_records` | 中頻讀 + **高頻寫**（`draw_records` insert 熱點） |
-| inventory-service | Inventory DB | `inventory`、`reservations` | 中頻寫（async batch，見 ADR-006），真相來源 |
+| Service | Schema | 核心 Table | 熱點特性 |
+|---------|--------|-----------|---------|
+| auth-service | `auth` | `users`、`roles`、`user_roles` | 中頻 OLTP，讀多寫少 |
+| campaign-service | `campaign` | `campaigns`、`prizes`、`draw_records` | 中頻讀 + **高頻寫**（`draw_records` insert 熱點） |
+| inventory-service | `inventory` | `inventory`、`reservations` | 中頻寫（async batch，見 ADR-006），真相來源 |
 
-### 3.1 跨服務資料交換（無跨 DB FK）
+### 3.1 跨服務資料交換（無跨 schema FK）
 
 跨服務資料交換一律透過 **API 呼叫或 Kafka event**（ADR-002 / ADR-007）。因此：
 
-- **跨 DB 之間沒有 FK**。`prize_id`、`draw_record_id`、`user_id` 在非屬主 DB 中是**邏輯引用（logical reference）**，其值由事件/API 攜帶，不做外鍵約束。
-- 這表示**沒有跨 DB 的 transaction**；一致性由 event + 補償（compensation）+ 對帳（reconciliation）達成最終一致（ADR-006）。
+- **跨 schema 之間沒有 FK**。`prize_id`、`draw_record_id`、`user_id` 在非屬主 schema 中是**邏輯引用（logical reference）**，其值由事件/API 攜帶，不做外鍵約束。
+- 這表示**沒有跨 schema 的 transaction**；一致性由 event + 補償（compensation）+ 對帳（reconciliation）達成最終一致（ADR-006）。
 
 ### 3.2 邏輯引用對照表 (Logical Reference Map)
 
@@ -122,7 +122,7 @@ prod（PostgreSQL）一律使用 **`TIMESTAMPTZ`**（含時區），統一以 **
 
 ## 6. Migration 說明 (Schema Migration)
 
-- **三套獨立 migration**（對應三個 DB），各自隨所屬 service 管理（ADR-002 後果）。
+- **三套 migration**（對應三個 schema），各自隨所屬 service 管理（ADR-002 後果）。
 - **建議 Flyway**（Spring Boot 預設整合），每 service 各自 `src/main/resources/db/migration/`，以版本化 SQL 對應本文件的 DDL/DML：
   - `V1__init_auth.sql` / `V2__seed_auth.sql`
   - `V1__init_campaign.sql` / `V2__seed_campaign.sql`
@@ -135,7 +135,7 @@ prod（PostgreSQL）一律使用 **`TIMESTAMPTZ`**（含時區），統一以 **
 
 ## 7. ER 總覽 (Overview ER Diagram)
 
-> 關聯線上的標註為判斷依據：標 `FK` = 同 DB 內實際外鍵；標 **`logical`** = 跨 DB 邏輯引用，**無 FK**（ADR-002）。Mermaid `erDiagram` 不區分線型，故以標籤標明。
+> 關聯線上的標註為判斷依據：標 `FK` = 同 schema 內實際外鍵；標 **`logical`** = 跨 schema 邏輯引用，**無 FK**（ADR-002）。Mermaid `erDiagram` 不區分線型，故以標籤標明。
 
 ```mermaid
 erDiagram
@@ -151,8 +151,8 @@ erDiagram
     DRAW_RECORDS ||--o| RESERVATIONS : "draw_record_id (logical, no FK)"
 ```
 
-### 各 DB 的 ER 圖
+### 各 schema 的 ER 圖
 
-- Auth DB → [auth-db.md](auth-db.md)
-- Campaign DB → [campaign-db.md](campaign-db.md)
-- Inventory DB → [inventory-db.md](inventory-db.md)
+- auth schema → [auth-db.md](auth-db.md)
+- campaign schema → [campaign-db.md](campaign-db.md)
+- inventory schema → [inventory-db.md](inventory-db.md)

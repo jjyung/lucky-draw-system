@@ -29,7 +29,7 @@
 ```sql
 -- =============================================================
 -- Campaign DB — PostgreSQL DDL
--- Service: campaign-service   (ADR-002 Database-Per-Service)
+-- Service: campaign-service   (ADR-002 schema-per-service)
 -- 冪等: ADR-005  權重抽獎/機率: ADR-004  狀態機: FR-CAMP-01
 -- =============================================================
 

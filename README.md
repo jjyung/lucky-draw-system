@@ -24,30 +24,39 @@ Prod/GCP: GCP Cloud SQL for PostgreSQL
 
 ```mermaid
 graph TD
-    Client["Client / Web"]
-    Gateway["API Gateway Service<br/>(Spring Cloud Gateway / JWT)"]
-    Auth["Auth Service<br/>(User & Permissions)"]
-    Draw["Draw Campaign Service<br/>(Lottery Logic)"]
-    Inv["Inventory Service<br/>(Stock & Risk Ctrl)"]
-    UserDB[("User DB<br/>(PostgreSQL)")]
-    CampDB[("Campaign DB<br/>(PostgreSQL)")]
-    RedisCache[("Redis Cache<br/>(Stock & Locks)")]
+    Client["Client / Web / Mobile"]
+    Gateway["API Gateway Service<br/>(JWT 驗證 / 限流 / 路由)"]
+    Auth["Auth Service<br/>(身份驗證與權限)"]
+    Draw["Draw Campaign Service<br/>(活動管理 / 抽獎邏輯 / 冪等 / Redis 預扣)"]
+    Inv["Inventory Service<br/>(庫存真相 / 補償 / 對帳)"]
 
-    Client -->|RESTful API| Gateway
+    AuthSchema[("auth schema")]
+    CampSchema[("campaign schema")]
+    InvSchema[("inventory schema")]
+    RedisCache[("Redis<br/>(鎖 / 計數 / 預扣 / 限流)")]
+    MQ[("Message Broker<br/>(RabbitMQ)")]
+
+    Client -->|"RESTful API"| Gateway
     Gateway --> Auth
     Gateway --> Draw
     Gateway --> Inv
-    Auth --> UserDB
-    Draw --> CampDB
-    Inv --> RedisCache
+    Auth --> AuthSchema
+    Draw --> CampSchema
+    Draw --> RedisCache
+    Draw -->|"inventory-commit"| MQ
+    Inv --> InvSchema
+    Inv -->|"consume"| MQ
+    Inv -->|"對帳校正"| RedisCache
 ```
+
+> 每個服務擁有並只操作自己的資料域（schema），跨服務一律走 API / event。實體部署（單一或多個 PostgreSQL instance）為 infra 細節，見 [ADR-002](docs/adr/002-database-per-service.md)。
 
 ### 微服務模組說明
 
 1. **API Gateway Service**: 統一 Entry point，處理 JWT 驗證、Rate Limiting 限流與 API 路由。
 2. **Auth Service**: 使用者身份驗證與權限管理。
-3. **Draw Campaign Service**: 抽獎活動管理、動態獎品機率配置（銘謝惠顧與各獎品總和 100%）與單次/多次抽獎邏輯。
-4. **Inventory & Risk Control**: 風控防護機制，包含使用者次數限制驗證與高併發預扣庫存（Redis + Lua 腳本防止超抽）。
+3. **Draw Campaign Service**: 抽獎活動管理、動態獎品機率配置（銘謝惠顧與各獎品總和 100%）、單次/多次抽獎邏輯，以及風控熱點路徑（防重複抽獎、個人抽獎次數上限、Redis + Lua 預扣庫存）。
+4. **Inventory Service**: 庫存真相來源——執行庫存條件扣減（DB 真相，防止超抽）、扣減失敗補償與帳目校對。
 
 ---
 

@@ -7,7 +7,7 @@
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [001](001-monorepo-gradle.md) | Monorepo 多模組建置結構 (Monorepo + Gradle 8.x) | Accepted | 2026-08-13 |
-| [002](002-database-per-service.md) | 每個服務擁有獨立資料庫 (Database-Per-Service) | Accepted | 2026-08-13 |
+| [002](002-database-per-service.md) | 服務資料所有權與隔離 (Data Ownership & Isolation) | Accepted | 2026-08-13 |
 | [003](003-redis-concurrency.md) | Redis 併發控制機制 (Redlock + Lua Scripts) | Accepted | 2026-08-13 |
 | [004](004-weighted-draw-algorithm.md) | 權重隨機抽獎演算法 (Weighted Random Draw) | Accepted | 2026-08-13 |
 | [005](005-anti-double-draw-idempotency.md) | 防重複抽獎與冪等性 (Anti-Double-Draw & Idempotency) | Accepted | 2026-08-13 |
@@ -22,7 +22,7 @@
 ```mermaid
 graph TD
     A1["ADR-001 Monorepo + Gradle"]
-    A2["ADR-002 Database-per-Service"]
+    A2["ADR-002 資料所有權隔離"]
     A3["ADR-003 Redis 併發控制"]
     A4["ADR-004 權重抽獎演算法"]
     A5["ADR-005 防重複抽獎 Idempotency"]

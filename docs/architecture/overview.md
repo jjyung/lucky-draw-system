@@ -40,23 +40,23 @@ graph TD
     subgraph "資料層 (GCP 受管服務)"
         Redis["Redis / Memorystore<br/>分散式鎖 (Redlock)<br/>庫存預扣計數器 (Lua)<br/>限流 / 抽獎次數計數"]
         MQ["Message Broker<br/>RabbitMQ (Spring Cloud Stream)"]
-        AuthDB[("Auth DB<br/>users / roles<br/>PostgreSQL")]
-        CampDB[("Campaign DB<br/>campaigns / prizes / draw_records<br/>PostgreSQL")]
-        InvDB[("Inventory DB<br/>inventory / reservations<br/>PostgreSQL")]
+        AuthSchema[("auth schema<br/>users / roles / user_roles")]
+        CampSchema[("campaign schema<br/>campaigns / prizes / draw_records")]
+        InvSchema[("inventory schema<br/>inventory / reservations")]
     end
 
     Client -->|"HTTPS / REST"| Gateway
     Gateway -->|"POST /auth/login"| Auth
     Gateway -->|"/campaigns, /draw"| Campaign
     Gateway -->|"inventory 寫回請求"| Inventory
-    Auth --> AuthDB
+    Auth -->|"schema: auth"| AuthSchema
     Auth -->|"private key 簽章"| Redis
-    Campaign --> CampDB
+    Campaign -->|"schema: campaign"| CampSchema
     Campaign -->|"SETNX 鎖 / draw_count"| Redis
     Campaign -->|"stock:{prizeId} Lua 預扣"| Redis
     Campaign -->|"publish draw-result / inventory-commit"| MQ
     Inventory -->|"consume inventory-commit"| MQ
-    Inventory --> InvDB
+    Inventory -->|"schema: inventory"| InvSchema
     Inventory -->|"對帳 / 校正 counter"| Redis
 ```
 
@@ -66,8 +66,8 @@ graph TD
 |-----------|------------------|------|----------|
 | API Gateway Service | 1. API Gateway | 統一 Entry point、JWT 驗證、Rate Limiting、API 路由、Idempotency-Key 檢查 | Spring Cloud Gateway, Spring Security, Redis 限流 |
 | Auth Service | 2. Auth Service | 使用者身份驗證與權限管理、JWT (RS256) 簽發、public key 公開 | Spring Security, JWT, PostgreSQL |
-| Draw Campaign Service | 3. Draw Campaign Service | 活動管理、動態獎品機率配置（含銘謝惠顧）、權重抽獎邏輯、冪等控制、發布事件 | Spring Boot 3, Redis Lua, Spring Cloud Stream |
-| Inventory & Risk Control | 4. Inventory & Risk Control | 庫存條件更新（source of truth）、inventory-commit 消費、預扣計數器維護、補償對帳 | Spring Boot 3, PostgreSQL, Redis |
+| Draw Campaign Service | 3. Draw Campaign Service | 活動管理、動態獎品機率配置（含銘謝惠顧）、權重抽獎邏輯、防重複抽獎、個人次數上限、Redis 預扣、發布事件 | Spring Boot 3, Redis Lua, Spring Cloud Stream |
+| Inventory Service | 4. Inventory Service | 庫存條件更新（source of truth）、inventory-commit 消費、計數器校正、補償對帳 | Spring Boot 3, PostgreSQL, Redis |
 
 ## 3. 技術棧矩陣 (Tech Stack Matrix)
 
@@ -78,7 +78,7 @@ graph TD
 | 建置 | Gradle | 8.x (Wrapper) | 多模組建置 | ADR-001 |
 | API 層 | Spring Cloud Gateway | 對應 Spring Boot 3.x | 閘道、路由、限流 | ADR-009 |
 | 安全 | Spring Security + JWT | RS256 非對稱簽章 | 鑑別與授權 | ADR-009 |
-| DB (prod) | PostgreSQL | 於 GCP Cloud SQL | 各 service 獨立 DB | ADR-002 |
+| DB (prod) | PostgreSQL | 於 GCP Cloud SQL | 每服務自有 schema（auth / campaign / inventory） | ADR-002 |
 | DB (dev) | SQLite / H2 | Spring Profiles 切換 | 地端輕量開發 | ADR-002 |
 | 快取 / 併發 | Redis | Memorystore (prod) / Docker (dev) | Redlock、Lua 預扣、計數器 | ADR-003 |
 | 消息 | Spring Cloud Stream + RabbitMQ binder | docker-compose (dev) / managed (prod) | draw-result、inventory-commit | ADR-007 |
@@ -87,7 +87,7 @@ graph TD
 
 ## 4. 關鍵架構特性 (Key Architectural Characteristics)
 
-1. **每個服務獨立 DB、獨立擴展**（ADR-002 / 008）：資料域隔離，熱點服務（campaign / inventory）可獨立放大。
+1. **服務資料所有權隔離**（ADR-002 / 008）：每服務只讀寫自有 schema（role 權限強制），跨服務一律走 API/event；實體部署（單/多 instance、schema 或 database）為 infra 細節，隨環境可調。
 2. **抽獎路徑為「Redis 加速 + DB 真相」兩層**（ADR-003 / 006）：低延遲 + 最終一致性，DB 條件更新保證不超抽。
 3. **冪等性由 Client 協作**（ADR-005）：Idempotency-Key + Redis 鎖 + DB UNIQUE 三道防線。
 4. **Broker 抽象化**（ADR-007）：Spring Cloud Stream 讓 POC 用 RabbitMQ、prod 可 config-only 換 Kafka / Pub/Sub。

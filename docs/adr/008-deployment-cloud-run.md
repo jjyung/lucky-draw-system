@@ -33,7 +33,7 @@ Internet
 | 元件 | Prod 方案 | 說明 |
 |------|-----------|------|
 | API Gateway / Auth / Campaign / Inventory | **GCP Cloud Run** | 每 service 一個 Cloud Run service，container image 由 CI build（Gradle bootJar + Jib/Dockerfile）推到 Artifact Registry |
-| PostgreSQL | **GCP Cloud SQL (PostgreSQL)** | 三個 DB（auth / campaign / inventory）可放同一 instance 的多個 database，或分 instance；啟用 HA（主從 + 自動 failover）與自動備份 |
+| PostgreSQL | **GCP Cloud SQL (PostgreSQL)** | 每服務自有 schema（auth / campaign / inventory，ADR-002），可單一或分拆 instance；啟用 HA（主從 + 自動 failover）與自動備份 |
 | Redis | **GCP Memorystore for Redis** | 使用 Redisson 的 Redlock 需要 Redis 2.8+（Memorystore 完全支援 Lua script）；啟用 HA tier 與 failover |
 | RabbitMQ | **Managed RabbitMQ（如 CloudAMQP）或 GCP Marketplace VM** | POC 可先用 Marketplace 單機 VM 跑 RabbitMQ；流量成長後再換受管服務或切 Kafka binder（config-only，見 ADR-007） |
 

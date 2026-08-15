@@ -16,7 +16,7 @@
 | [requirements.md](../requirements.md) | 主需求清單，本文件逐一對齊其 `FR-AUTH-*`、`FR-X-01` 與相關 `NFR` |
 | [AGENTS.md](../../../AGENTS.md) | 開發流程指引，本文件遵循其 §3 SA 層模板 |
 | [ADR-009](../../adr/009-security-jwt-gateway.md) | 身份驗證與憑證簽發、Gateway 驗證、權限分級、簽發機密存放 |
-| [ADR-002](../../adr/002-database-per-service.md) | Database-Per-Service：auth-service 擁有並只操作自己的資料庫 |
+| [ADR-002](../../adr/002-database-per-service.md) | 資料隔離（schema-per-service）：auth-service 只操作自己的 schema |
 | [ADR-008](../../adr/008-deployment-cloud-run.md) | 部署架構：簽發機密的安全存放（僅 auth-service 可讀） |
 
 > **層級界線**：本文件只定義**業務行為與語意**（use case、business rule、business state、acceptance intent、business data dictionary）。API 路由/參數、API 文件、資料庫 schema、憑證簽發的實作細節，屬 **SD 層**，不在本文件範圍；本文件引用之 ADR 中的技術細節僅作為業務語意之佐證，不在此重複設計。
