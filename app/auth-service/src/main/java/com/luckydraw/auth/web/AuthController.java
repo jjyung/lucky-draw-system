@@ -2,8 +2,7 @@ package com.luckydraw.auth.web;
 
 import com.luckydraw.contracts.auth.api.AuthApi;
 import com.luckydraw.contracts.auth.api.model.*;
-import com.luckydraw.auth.model.entity.Role;
-import com.luckydraw.auth.model.entity.User;
+import com.luckydraw.auth.mapper.UserMapper;
 import com.luckydraw.auth.jwt.JwtKeyProvider;
 import com.luckydraw.auth.jwt.JwtService;
 import com.luckydraw.auth.service.AuthService;
@@ -13,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * AuthApi 的 controller 實作（openapi-generator 僅生成 interface，此處手寫 implements，ADR-011）。
- * 只做 DTO 組裝與轉發；業務邏輯在 AuthService / JwtService。
+ * 只做 DTO 組裝（經 UserMapper）與轉發；業務邏輯在 AuthService / JwtService。
  */
 @RestController
 public class AuthController implements AuthApi {
@@ -21,25 +20,20 @@ public class AuthController implements AuthApi {
     private final AuthService authService;
     private final JwtService jwtService;
     private final JwtKeyProvider keyProvider;
+    private final UserMapper userMapper;
 
-    public AuthController(AuthService authService, JwtService jwtService, JwtKeyProvider keyProvider) {
+    public AuthController(AuthService authService, JwtService jwtService, JwtKeyProvider keyProvider,
+                          UserMapper userMapper) {
         this.authService = authService;
         this.jwtService = jwtService;
         this.keyProvider = keyProvider;
+        this.userMapper = userMapper;
     }
 
     @Override
     public ResponseEntity<PostAuthRegisterResponseDTO> postAuthRegister(PostAuthRegisterRequestDTO request) {
-        User user = authService.register(request.getUsername(), request.getEmail(), request.getPassword());
-
-        UserResourceDTO resource = new UserResourceDTO()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .roles(user.getRoles().stream()
-                        .map(Role::getCode)
-                        .map(code -> UserResourceDTO.RolesEnum.fromValue(code))
-                        .toList());
+        UserResourceDTO resource = userMapper.toResource(
+                authService.register(request.getUsername(), request.getEmail(), request.getPassword()));
 
         PostAuthRegisterResponseDTO response = new PostAuthRegisterResponseDTO()
                 .code("00000")

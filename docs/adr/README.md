@@ -17,6 +17,7 @@
 | [009](009-security-jwt-gateway.md) | 安全機制 — JWT + Gateway 驗證 (JWT RS256) | Accepted | 2026-08-13 |
 | [010](010-inventory-stock-provisioning.md) | 庫存初始與配置同步 (Inventory Stock Provisioning) | Accepted | 2026-08-14 |
 | [011](011-code-generation-persistence-strategy.md) | 程式碼生成與持久層策略 (Code Gen & Persistence Strategy) | Accepted | 2026-08-15 |
+| [012](012-object-mapping-boilerplate.md) | 物件映射與 Boilerplate 策略 (Object Mapping & Boilerplate) | Accepted | 2026-08-15 |
 
 ## 決策之間的關聯
 

@@ -16,6 +16,9 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     // JWT RS256 簽發（ADR-009）與 JWKS 公開（auth-keys-001）
     implementation 'com.nimbusds:nimbus-jose-jwt:9.37.3'
+    // entity ↔ DTO 映射（ADR-012，unmappedTargetPolicy=ERROR 編譯期檢查）
+    implementation "org.mapstruct:mapstruct:${mapstructVersion}"
+    annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
 
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.postgresql:postgresql'
