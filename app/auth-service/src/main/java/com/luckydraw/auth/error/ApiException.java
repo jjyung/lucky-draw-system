@@ -1,0 +1,27 @@
+package com.luckydraw.auth.error;
+
+import org.springframework.http.HttpStatus;
+
+/**
+ * 業務錯誤，承載錯誤碼（error-list.md）與對應 HTTP status。
+ * controller/service 拋出，由 GlobalExceptionHandler 轉成 ErrorEnvelope。
+ */
+public class ApiException extends RuntimeException {
+
+    private final String code;
+    private final HttpStatus status;
+
+    public ApiException(String code, HttpStatus status, String message) {
+        super(message);
+        this.code = code;
+        this.status = status;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public HttpStatus getStatus() {
+        return status;
+    }
+}
