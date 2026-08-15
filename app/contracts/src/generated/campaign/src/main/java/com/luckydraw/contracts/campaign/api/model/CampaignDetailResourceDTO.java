@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.CampaignStatus;
+import com.luckydraw.contracts.campaign.api.model.CampaignStatusEnum;
 import com.luckydraw.contracts.campaign.api.model.PrizeSummaryResourceDTO;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -31,7 +31,7 @@ public class CampaignDetailResourceDTO {
 
   private String name;
 
-  private CampaignStatus status;
+  private CampaignStatusEnum status;
 
   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
   private OffsetDateTime startTime;
@@ -49,7 +49,7 @@ public class CampaignDetailResourceDTO {
   /**
    * Constructor with only required parameters
    */
-  public CampaignDetailResourceDTO(Long id, String name, CampaignStatus status, OffsetDateTime startTime, OffsetDateTime endTime) {
+  public CampaignDetailResourceDTO(Long id, String name, CampaignStatusEnum status, OffsetDateTime startTime, OffsetDateTime endTime) {
     this.id = id;
     this.name = name;
     this.status = status;
@@ -95,7 +95,7 @@ public class CampaignDetailResourceDTO {
     this.name = name;
   }
 
-  public CampaignDetailResourceDTO status(CampaignStatus status) {
+  public CampaignDetailResourceDTO status(CampaignStatusEnum status) {
     this.status = status;
     return this;
   }
@@ -106,11 +106,11 @@ public class CampaignDetailResourceDTO {
    */
   @NotNull @Valid 
   @JsonProperty("status")
-  public CampaignStatus getStatus() {
+  public CampaignStatusEnum getStatus() {
     return status;
   }
 
-  public void setStatus(CampaignStatus status) {
+  public void setStatus(CampaignStatusEnum status) {
     this.status = status;
   }
 

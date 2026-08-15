@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.PrizeType;
+import com.luckydraw.contracts.campaign.api.model.PrizeTypeEnum;
 import java.time.OffsetDateTime;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -25,7 +25,7 @@ public class PrizeSummaryResourceDTO {
 
   private String name;
 
-  private PrizeType type;
+  private PrizeTypeEnum type;
 
   public PrizeSummaryResourceDTO() {
     super();
@@ -34,7 +34,7 @@ public class PrizeSummaryResourceDTO {
   /**
    * Constructor with only required parameters
    */
-  public PrizeSummaryResourceDTO(Long id, String name, PrizeType type) {
+  public PrizeSummaryResourceDTO(Long id, String name, PrizeTypeEnum type) {
     this.id = id;
     this.name = name;
     this.type = type;
@@ -78,7 +78,7 @@ public class PrizeSummaryResourceDTO {
     this.name = name;
   }
 
-  public PrizeSummaryResourceDTO type(PrizeType type) {
+  public PrizeSummaryResourceDTO type(PrizeTypeEnum type) {
     this.type = type;
     return this;
   }
@@ -89,11 +89,11 @@ public class PrizeSummaryResourceDTO {
    */
   @NotNull @Valid 
   @JsonProperty("type")
-  public PrizeType getType() {
+  public PrizeTypeEnum getType() {
     return type;
   }
 
-  public void setType(PrizeType type) {
+  public void setType(PrizeTypeEnum type) {
     this.type = type;
   }
 

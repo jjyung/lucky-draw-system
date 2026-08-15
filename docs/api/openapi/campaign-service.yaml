@@ -1,4 +1,4 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 
 info:
   title: campaign-service — REST 契約
@@ -755,7 +755,7 @@ components:
     # 列舉
     # =====================================================================
 
-    CampaignStatus:
+    CampaignStatusEnum:
       type: string
       description: |
         活動生命週期狀態（SA §4.1）。狀態機：`DRAFT → ACTIVE → ENDED`（單向，`ENDED` 為終態不可回轉）。
@@ -764,7 +764,7 @@ components:
         - ACTIVE
         - ENDED
 
-    PrizeType:
+    PrizeTypeEnum:
       type: string
       description: |
         獎品型別。`THANK_YOU`（銘謝惠顧）建模為獎品，與 `PRIZE` 同列、同具機率（ADR-004）；
@@ -773,7 +773,7 @@ components:
         - PRIZE
         - THANK_YOU
 
-    DrawResultType:
+    DrawResultTypeEnum:
       type: string
       description: |
         抽獎結果型別（SA §4.2）。`THANK_YOU` 含兩種來源：權重抽選命中 THANK_YOU 獎品；
@@ -868,7 +868,7 @@ components:
         - status
       properties:
         status:
-          $ref: '#/components/schemas/CampaignStatus'
+          $ref: '#/components/schemas/CampaignStatusEnum'
       example:
         status: "ACTIVE"
 
@@ -919,7 +919,7 @@ components:
           maxLength: 128
           description: 獎品名稱（非空，對應 `prizes.name`）。
         type:
-          $ref: '#/components/schemas/PrizeType'
+          $ref: '#/components/schemas/PrizeTypeEnum'
         probability:
           type: number
           minimum: 0
@@ -981,7 +981,7 @@ components:
           type: string
           description: 活動名稱。
         status:
-          $ref: '#/components/schemas/CampaignStatus'
+          $ref: '#/components/schemas/CampaignStatusEnum'
         startTime:
           type: string
           format: date-time
@@ -1017,7 +1017,7 @@ components:
           type: string
           description: 活動名稱。
         status:
-          $ref: '#/components/schemas/CampaignStatus'
+          $ref: '#/components/schemas/CampaignStatusEnum'
         startTime:
           type: string
           format: date-time
@@ -1065,7 +1065,7 @@ components:
           type: string
           description: 活動名稱。
         status:
-          $ref: '#/components/schemas/CampaignStatus'
+          $ref: '#/components/schemas/CampaignStatusEnum'
         startTime:
           type: string
           format: date-time
@@ -1104,7 +1104,7 @@ components:
           type: string
           description: 獎品名稱。
         type:
-          $ref: '#/components/schemas/PrizeType'
+          $ref: '#/components/schemas/PrizeTypeEnum'
       example:
         id: 21
         name: "iPhone 16"
@@ -1129,7 +1129,7 @@ components:
           type: string
           description: 獎品名稱。
         type:
-          $ref: '#/components/schemas/PrizeType'
+          $ref: '#/components/schemas/PrizeTypeEnum'
         probability:
           type: number
           minimum: 0
@@ -1197,7 +1197,7 @@ components:
           format: int64
           description: 抽獎所屬活動識別（由請求路徑決定，非 client 指定）。
         resultType:
-          $ref: '#/components/schemas/DrawResultType'
+          $ref: '#/components/schemas/DrawResultTypeEnum'
         prize:
           nullable: true
           allOf:

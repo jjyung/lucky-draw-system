@@ -12,7 +12,7 @@ import java.util.List;
  * CampaignEntity/PrizeEntity → DTO 映射（ADR-012，unmappedTargetPolicy=ERROR）。
  * 列表/詳情 DTO 本就不含 drawLimit（管理欄位），故無需 ignore；
  * 管理端 CampaignResourceDTO 含完整欄位（含 drawLimit）。
- * entity enum Status → DTO enum CampaignStatus 由 toStatus 轉換。
+ * entity enum Status → DTO enum CampaignStatusEnum 由 toStatus 轉換。
  */
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface CampaignMapper {
@@ -29,12 +29,12 @@ public interface CampaignMapper {
 
     List<PrizeResourceDTO> toPrizeResourceList(List<PrizeEntity> prizes);
 
-    default CampaignStatus toStatus(CampaignEntity.Status status) {
-        return CampaignStatus.fromValue(status.name());
+    default CampaignStatusEnum toStatus(CampaignEntity.Status status) {
+        return CampaignStatusEnum.fromValue(status.name());
     }
 
-    default PrizeType toPrizeType(PrizeEntity.Type type) {
-        return PrizeType.fromValue(type.name());
+    default PrizeTypeEnum toPrizeType(PrizeEntity.Type type) {
+        return PrizeTypeEnum.fromValue(type.name());
     }
 
     default PrizeSummaryResourceDTO toPrizeSummary(PrizeEntity prize) {

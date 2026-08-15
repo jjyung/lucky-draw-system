@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.CampaignStatus;
+import com.luckydraw.contracts.campaign.api.model.CampaignStatusEnum;
 import java.time.OffsetDateTime;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -21,7 +21,7 @@ import jakarta.annotation.Generated;
 @Generated(value = "org.openapitools.codegen.languages.SpringCodegen", comments = "Generator version: 7.9.0")
 public class PatchCampaignStatusRequestDTO {
 
-  private CampaignStatus status;
+  private CampaignStatusEnum status;
 
   public PatchCampaignStatusRequestDTO() {
     super();
@@ -30,11 +30,11 @@ public class PatchCampaignStatusRequestDTO {
   /**
    * Constructor with only required parameters
    */
-  public PatchCampaignStatusRequestDTO(CampaignStatus status) {
+  public PatchCampaignStatusRequestDTO(CampaignStatusEnum status) {
     this.status = status;
   }
 
-  public PatchCampaignStatusRequestDTO status(CampaignStatus status) {
+  public PatchCampaignStatusRequestDTO status(CampaignStatusEnum status) {
     this.status = status;
     return this;
   }
@@ -45,11 +45,11 @@ public class PatchCampaignStatusRequestDTO {
    */
   @NotNull @Valid 
   @JsonProperty("status")
-  public CampaignStatus getStatus() {
+  public CampaignStatusEnum getStatus() {
     return status;
   }
 
-  public void setStatus(CampaignStatus status) {
+  public void setStatus(CampaignStatusEnum status) {
     this.status = status;
   }
 

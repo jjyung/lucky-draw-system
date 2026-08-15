@@ -7,10 +7,10 @@ src/main/java/com/luckydraw/contracts/campaign/api/PrizesApi.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/BatchDrawResourceDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/CampaignDetailResourceDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/CampaignResourceDTO.java
-src/main/java/com/luckydraw/contracts/campaign/api/model/CampaignStatus.java
+src/main/java/com/luckydraw/contracts/campaign/api/model/CampaignStatusEnum.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/CampaignSummaryResourceDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/DrawResultResourceDTO.java
-src/main/java/com/luckydraw/contracts/campaign/api/model/DrawResultType.java
+src/main/java/com/luckydraw/contracts/campaign/api/model/DrawResultTypeEnum.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/ErrorEnvelope.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/GetCampaignByIdResponseDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/GetCampaignsResponseDTO.java
@@ -24,7 +24,7 @@ src/main/java/com/luckydraw/contracts/campaign/api/model/PostCampaignsResponseDT
 src/main/java/com/luckydraw/contracts/campaign/api/model/PrizeInputDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/PrizeResourceDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/PrizeSummaryResourceDTO.java
-src/main/java/com/luckydraw/contracts/campaign/api/model/PrizeType.java
+src/main/java/com/luckydraw/contracts/campaign/api/model/PrizeTypeEnum.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/PrizesConfigResourceDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/PutCampaignByIdRequestDTO.java
 src/main/java/com/luckydraw/contracts/campaign/api/model/PutCampaignByIdResponseDTO.java

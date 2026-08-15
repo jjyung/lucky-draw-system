@@ -8,7 +8,7 @@ import com.luckydraw.campaign.repository.CampaignRepository;
 import com.luckydraw.campaign.repository.DrawRecordRepository;
 import com.luckydraw.contracts.campaign.api.model.BatchDrawResourceDTO;
 import com.luckydraw.contracts.campaign.api.model.DrawResultResourceDTO;
-import com.luckydraw.contracts.campaign.api.model.DrawResultType;
+import com.luckydraw.contracts.campaign.api.model.DrawResultTypeEnum;
 import com.luckydraw.campaign.error.ApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -101,7 +101,7 @@ class DrawServiceTest {
 
         var data = (DrawResultResourceDTO) drawService.draw(42L, campaign.getId(), "key-1", 1);
 
-        assertThat(data.getResultType()).isEqualTo(DrawResultType.THANK_YOU);
+        assertThat(data.getResultType()).isEqualTo(DrawResultTypeEnum.THANK_YOU);
         assertThat(data.getPrize()).isNull();
     }
 

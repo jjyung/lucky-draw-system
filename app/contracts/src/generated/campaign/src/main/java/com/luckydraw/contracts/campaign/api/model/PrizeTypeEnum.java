@@ -15,21 +15,19 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 活動生命週期狀態（SA §4.1）。狀態機：`DRAFT → ACTIVE → ENDED`（單向，`ENDED` 為終態不可回轉）。 
+ * 獎品型別。`THANK_YOU`（銘謝惠顧）建模為獎品，與 `PRIZE` 同列、同具機率（ADR-004）； 其 `quantity` 忽略（無限庫存，不扣庫存）。 
  */
 
 @Generated(value = "org.openapitools.codegen.languages.SpringCodegen", comments = "Generator version: 7.9.0")
-public enum CampaignStatus {
+public enum PrizeTypeEnum {
   
-  DRAFT("DRAFT"),
+  PRIZE("PRIZE"),
   
-  ACTIVE("ACTIVE"),
-  
-  ENDED("ENDED");
+  THANK_YOU("THANK_YOU");
 
   private String value;
 
-  CampaignStatus(String value) {
+  PrizeTypeEnum(String value) {
     this.value = value;
   }
 
@@ -44,8 +42,8 @@ public enum CampaignStatus {
   }
 
   @JsonCreator
-  public static CampaignStatus fromValue(String value) {
-    for (CampaignStatus b : CampaignStatus.values()) {
+  public static PrizeTypeEnum fromValue(String value) {
+    for (PrizeTypeEnum b : PrizeTypeEnum.values()) {
       if (b.value.equals(value)) {
         return b;
       }

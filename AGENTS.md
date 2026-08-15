@@ -312,7 +312,7 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 
 | Rule | 檔案 | 定位 |
 |------|------|------|
-| Naming | [`docs/rules/naming.md`](docs/rules/naming.md) | 分層命名；**JPA entity 一律 `XxxEntity` 後綴**（dirty-checking 警示）；generated enum 例外不加後綴 |
+| Naming | [`docs/rules/naming.md`](docs/rules/naming.md) | 分層命名；**JPA entity `XxxEntity`、enum `XxxEnum`（generated enum 在 YAML 層命名）** |
 | Exceptions | [`docs/rules/exceptions.md`](docs/rules/exceptions.md) | 業務異常 `ApiException extends RuntimeException` 不宣告 throws；`@RestControllerAdvice` 兜底轉 envelope |
 | Logging | [`docs/rules/logging.md`](docs/rules/logging.md) | SLF4J + Logback；佔位符 `{}`；敏感資訊不落 log |
 | Error Codes | [`docs/rules/error-codes.md`](docs/rules/error-codes.md) | 分段規約；**唯一碼表在 [`docs/api/error-list.md`](docs/api/error-list.md)** |

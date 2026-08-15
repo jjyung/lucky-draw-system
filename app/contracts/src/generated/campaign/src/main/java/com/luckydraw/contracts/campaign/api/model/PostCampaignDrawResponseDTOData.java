@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.luckydraw.contracts.campaign.api.model.BatchDrawResourceDTO;
 import com.luckydraw.contracts.campaign.api.model.DrawResultResourceDTO;
-import com.luckydraw.contracts.campaign.api.model.DrawResultType;
+import com.luckydraw.contracts.campaign.api.model.DrawResultTypeEnum;
 import com.luckydraw.contracts.campaign.api.model.PrizeSummaryResourceDTO;
 import java.util.ArrayList;
 import java.util.Arrays;

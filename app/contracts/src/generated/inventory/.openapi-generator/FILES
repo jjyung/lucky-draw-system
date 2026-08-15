@@ -1,8 +1,7 @@
-.openapi-generator-ignore
 README.md
 pom.xml
 src/main/java/com/luckydraw/contracts/inventory/api/ApiUtil.java
 src/main/java/com/luckydraw/contracts/inventory/api/model/InventoryCommitEvent.java
 src/main/java/com/luckydraw/contracts/inventory/api/model/InventoryState.java
 src/main/java/com/luckydraw/contracts/inventory/api/model/PrizeStockConfiguredEvent.java
-src/main/java/com/luckydraw/contracts/inventory/api/model/ReservationState.java
+src/main/java/com/luckydraw/contracts/inventory/api/model/ReservationStateEnum.java

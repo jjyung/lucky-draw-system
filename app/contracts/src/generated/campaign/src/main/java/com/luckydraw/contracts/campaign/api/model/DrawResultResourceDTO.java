@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.DrawResultType;
+import com.luckydraw.contracts.campaign.api.model.DrawResultTypeEnum;
 import com.luckydraw.contracts.campaign.api.model.PrizeSummaryResourceDTO;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import java.util.ArrayList;
@@ -30,7 +30,7 @@ public class DrawResultResourceDTO implements PostCampaignDrawResponseDTOData {
 
   private Long campaignId;
 
-  private DrawResultType resultType;
+  private DrawResultTypeEnum resultType;
 
   private PrizeSummaryResourceDTO prize = null;
 
@@ -41,7 +41,7 @@ public class DrawResultResourceDTO implements PostCampaignDrawResponseDTOData {
   /**
    * Constructor with only required parameters
    */
-  public DrawResultResourceDTO(Long drawRecordId, Long campaignId, DrawResultType resultType) {
+  public DrawResultResourceDTO(Long drawRecordId, Long campaignId, DrawResultTypeEnum resultType) {
     this.drawRecordId = drawRecordId;
     this.campaignId = campaignId;
     this.resultType = resultType;
@@ -85,7 +85,7 @@ public class DrawResultResourceDTO implements PostCampaignDrawResponseDTOData {
     this.campaignId = campaignId;
   }
 
-  public DrawResultResourceDTO resultType(DrawResultType resultType) {
+  public DrawResultResourceDTO resultType(DrawResultTypeEnum resultType) {
     this.resultType = resultType;
     return this;
   }
@@ -96,11 +96,11 @@ public class DrawResultResourceDTO implements PostCampaignDrawResponseDTOData {
    */
   @NotNull @Valid 
   @JsonProperty("resultType")
-  public DrawResultType getResultType() {
+  public DrawResultTypeEnum getResultType() {
     return resultType;
   }
 
-  public void setResultType(DrawResultType resultType) {
+  public void setResultType(DrawResultTypeEnum resultType) {
     this.resultType = resultType;
   }
 

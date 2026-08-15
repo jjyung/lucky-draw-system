@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.PrizeType;
+import com.luckydraw.contracts.campaign.api.model.PrizeTypeEnum;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import jakarta.validation.Valid;
@@ -26,7 +26,7 @@ public class PrizeResourceDTO {
 
   private String name;
 
-  private PrizeType type;
+  private PrizeTypeEnum type;
 
   private BigDecimal probability;
 
@@ -39,7 +39,7 @@ public class PrizeResourceDTO {
   /**
    * Constructor with only required parameters
    */
-  public PrizeResourceDTO(Long id, String name, PrizeType type, BigDecimal probability, Integer quantity) {
+  public PrizeResourceDTO(Long id, String name, PrizeTypeEnum type, BigDecimal probability, Integer quantity) {
     this.id = id;
     this.name = name;
     this.type = type;
@@ -85,7 +85,7 @@ public class PrizeResourceDTO {
     this.name = name;
   }
 
-  public PrizeResourceDTO type(PrizeType type) {
+  public PrizeResourceDTO type(PrizeTypeEnum type) {
     this.type = type;
     return this;
   }
@@ -96,11 +96,11 @@ public class PrizeResourceDTO {
    */
   @NotNull @Valid 
   @JsonProperty("type")
-  public PrizeType getType() {
+  public PrizeTypeEnum getType() {
     return type;
   }
 
-  public void setType(PrizeType type) {
+  public void setType(PrizeTypeEnum type) {
     this.type = type;
   }
 

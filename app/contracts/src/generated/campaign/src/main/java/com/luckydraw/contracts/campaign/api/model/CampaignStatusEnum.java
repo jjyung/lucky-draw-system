@@ -15,19 +15,21 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 抽獎結果型別（SA §4.2）。`THANK_YOU` 含兩種來源：權重抽選命中 THANK_YOU 獎品； 或命中獎品但庫存不足而**降級**（ADR-006，不重抽）。 
+ * 活動生命週期狀態（SA §4.1）。狀態機：`DRAFT → ACTIVE → ENDED`（單向，`ENDED` 為終態不可回轉）。 
  */
 
 @Generated(value = "org.openapitools.codegen.languages.SpringCodegen", comments = "Generator version: 7.9.0")
-public enum DrawResultType {
+public enum CampaignStatusEnum {
   
-  WIN("WIN"),
+  DRAFT("DRAFT"),
   
-  THANK_YOU("THANK_YOU");
+  ACTIVE("ACTIVE"),
+  
+  ENDED("ENDED");
 
   private String value;
 
-  DrawResultType(String value) {
+  CampaignStatusEnum(String value) {
     this.value = value;
   }
 
@@ -42,8 +44,8 @@ public enum DrawResultType {
   }
 
   @JsonCreator
-  public static DrawResultType fromValue(String value) {
-    for (DrawResultType b : DrawResultType.values()) {
+  public static CampaignStatusEnum fromValue(String value) {
+    for (CampaignStatusEnum b : CampaignStatusEnum.values()) {
       if (b.value.equals(value)) {
         return b;
       }

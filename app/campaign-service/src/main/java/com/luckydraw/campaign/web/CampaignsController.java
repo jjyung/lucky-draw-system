@@ -76,7 +76,7 @@ public class CampaignsController implements CampaignsApi {
         return ResponseEntity.ok(response);
     }
 
-    private CampaignEntity.Status toStatus(CampaignStatus status) {
+    private CampaignEntity.Status toStatus(CampaignStatusEnum status) {
         return CampaignEntity.Status.valueOf(status.getValue());
     }
 }

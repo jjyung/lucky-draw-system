@@ -3,7 +3,7 @@ package com.luckydraw.campaign.mapper;
 import com.luckydraw.campaign.model.entity.DrawRecordEntity;
 import com.luckydraw.contracts.campaign.api.model.BatchDrawResourceDTO;
 import com.luckydraw.contracts.campaign.api.model.DrawResultResourceDTO;
-import com.luckydraw.contracts.campaign.api.model.DrawResultType;
+import com.luckydraw.contracts.campaign.api.model.DrawResultTypeEnum;
 import com.luckydraw.contracts.campaign.api.model.PrizeSummaryResourceDTO;
 import org.springframework.stereotype.Component;
 
@@ -49,13 +49,13 @@ public class DrawResultMapper {
         DrawResultResourceDTO dto = new DrawResultResourceDTO()
                 .drawRecordId(record.getId())
                 .campaignId(record.getCampaign().getId())
-                .resultType(DrawResultType.fromValue(record.getResultType().name()));
+                .resultType(DrawResultTypeEnum.fromValue(record.getResultType().name()));
 
         if (record.getResultType() == DrawRecordEntity.ResultType.WIN && record.getPrize() != null) {
             PrizeSummaryResourceDTO prize = new PrizeSummaryResourceDTO()
                     .id(record.getPrize().getId())
                     .name(record.getPrize().getName())
-                    .type(com.luckydraw.contracts.campaign.api.model.PrizeType
+                    .type(com.luckydraw.contracts.campaign.api.model.PrizeTypeEnum
                             .fromValue(record.getPrize().getType().name()));
             dto.prize(prize);
         }

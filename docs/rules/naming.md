@@ -26,8 +26,9 @@ JPA entity **一律加 `Entity` 後綴**（如 `UserEntity`），理由：
 
 ## 3. Enum 後綴
 
-- **手寫 enum**：可帶 `Enum` 後綴（`ProcessStatusEnum`）。
-- **generated enum**：**例外不加**——openapi-generator 生成的 enum（`CampaignStatus`、`PrizeType`）遵從 DTO 命名，無法也無需加後綴。
+- **所有 enum 一律加 `Enum` 後綴**（如 `CampaignStatusEnum`、`PrizeTypeEnum`），含 openapi-generator 生成的 enum。
+- **generated enum 的後綴在 YAML 層處理**：OpenAPI 的 enum schema 命名為 `XxxEnum`（如 `CampaignStatusEnum`），generator 即生成同名 enum——**改 YAML 再重生成，而非改生成物**。內嵌 enum（如 DTO 內欄位）generator 會自動加 `Enum` 後綴（如 `RolesEnum`）。
+- 理由：enum 是「型別」，與 DTO（資料載體）在使用語意上不同，命名上區分（`Enum` vs `DTO`）有助於識別。
 
 ## 4. 例外命名
 

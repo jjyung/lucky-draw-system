@@ -5,7 +5,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.luckydraw.contracts.campaign.api.model.CampaignStatus;
+import com.luckydraw.contracts.campaign.api.model.CampaignStatusEnum;
 import java.time.OffsetDateTime;
 import org.springframework.format.annotation.DateTimeFormat;
 import java.time.OffsetDateTime;
@@ -27,7 +27,7 @@ public class CampaignResourceDTO {
 
   private String name;
 
-  private CampaignStatus status;
+  private CampaignStatusEnum status;
 
   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
   private OffsetDateTime startTime;
@@ -44,7 +44,7 @@ public class CampaignResourceDTO {
   /**
    * Constructor with only required parameters
    */
-  public CampaignResourceDTO(Long id, String name, CampaignStatus status, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
+  public CampaignResourceDTO(Long id, String name, CampaignStatusEnum status, OffsetDateTime startTime, OffsetDateTime endTime, Integer drawLimit) {
     this.id = id;
     this.name = name;
     this.status = status;
@@ -91,7 +91,7 @@ public class CampaignResourceDTO {
     this.name = name;
   }
 
-  public CampaignResourceDTO status(CampaignStatus status) {
+  public CampaignResourceDTO status(CampaignStatusEnum status) {
     this.status = status;
     return this;
   }
@@ -102,11 +102,11 @@ public class CampaignResourceDTO {
    */
   @NotNull @Valid 
   @JsonProperty("status")
-  public CampaignStatus getStatus() {
+  public CampaignStatusEnum getStatus() {
     return status;
   }
 
-  public void setStatus(CampaignStatus status) {
+  public void setStatus(CampaignStatusEnum status) {
     this.status = status;
   }
 

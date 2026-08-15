@@ -15,19 +15,19 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 獎品型別。`THANK_YOU`（銘謝惠顧）建模為獎品，與 `PRIZE` 同列、同具機率（ADR-004）； 其 `quantity` 忽略（無限庫存，不扣庫存）。 
+ * 抽獎結果型別（SA §4.2）。`THANK_YOU` 含兩種來源：權重抽選命中 THANK_YOU 獎品； 或命中獎品但庫存不足而**降級**（ADR-006，不重抽）。 
  */
 
 @Generated(value = "org.openapitools.codegen.languages.SpringCodegen", comments = "Generator version: 7.9.0")
-public enum PrizeType {
+public enum DrawResultTypeEnum {
   
-  PRIZE("PRIZE"),
+  WIN("WIN"),
   
   THANK_YOU("THANK_YOU");
 
   private String value;
 
-  PrizeType(String value) {
+  DrawResultTypeEnum(String value) {
     this.value = value;
   }
 
@@ -42,8 +42,8 @@ public enum PrizeType {
   }
 
   @JsonCreator
-  public static PrizeType fromValue(String value) {
-    for (PrizeType b : PrizeType.values()) {
+  public static DrawResultTypeEnum fromValue(String value) {
+    for (DrawResultTypeEnum b : DrawResultTypeEnum.values()) {
       if (b.value.equals(value)) {
         return b;
       }

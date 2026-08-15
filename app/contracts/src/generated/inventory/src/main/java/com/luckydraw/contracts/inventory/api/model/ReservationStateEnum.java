@@ -19,7 +19,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 
 @Generated(value = "org.openapitools.codegen.languages.SpringCodegen", comments = "Generator version: 7.9.0")
-public enum ReservationState {
+public enum ReservationStateEnum {
   
   RESERVED("RESERVED"),
   
@@ -29,7 +29,7 @@ public enum ReservationState {
 
   private String value;
 
-  ReservationState(String value) {
+  ReservationStateEnum(String value) {
     this.value = value;
   }
 
@@ -44,8 +44,8 @@ public enum ReservationState {
   }
 
   @JsonCreator
-  public static ReservationState fromValue(String value) {
-    for (ReservationState b : ReservationState.values()) {
+  public static ReservationStateEnum fromValue(String value) {
+    for (ReservationStateEnum b : ReservationStateEnum.values()) {
       if (b.value.equals(value)) {
         return b;
       }

@@ -203,7 +203,7 @@ components:
         lastConfigVersion: 3
         updatedAt: "2026-08-14T06:00:00Z"
 
-    ReservationState:
+    ReservationStateEnum:
       type: string
       enum:
         - RESERVED
