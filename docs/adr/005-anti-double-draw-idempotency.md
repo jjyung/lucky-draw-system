@@ -48,11 +48,13 @@ SET lock:draw:{userId}:{campaignId}:{idemKey} "1" NX PX 30000
 
 ```sql
 ALTER TABLE draw_records
-  ADD CONSTRAINT uq_draw_idem UNIQUE (user_id, campaign_id, idempotency_key);
+  ADD CONSTRAINT uq_draw_idem UNIQUE (user_id, campaign_id, idempotency_key, seq);
 ```
 
-- 即使 Redis 鎖因時鐘漂移 / GC pause / TTL 過期而失效，DB 的 UNIQUE constraint 保證**同一複合鍵最多只有一筆 draw_record**。
+- 即使 Redis 鎖因時鐘漂移 / GC pause / TTL 過期而失效，DB 的 UNIQUE constraint 保證**同一複合鍵（含 seq）最多只有一筆 draw_record**。
 - 落庫時若撞 UNIQUE → 代表該請求已處理過 → **replay 路徑**（見下）。
+
+> **批次抽獎語意（FR-CAMP-08，2026-08-16 補充）**：批次 `count=N` 由**單一** Idempotency-Key 對應整批，落 **N 筆** draw_record，以 `seq`（批內序號 0..N-1）區分。故 UNIQUE 為**四元組** `(user_id, campaign_id, idempotency_key, seq)`：單次抽獎 `seq=0`（退化為三元組語意）；批次 N 筆不撞唯一約束。replay 時以 `user_id + campaign_id + idempotency_key` 查詢（**不帶 seq**），依 `seq` 排序回傳 N 筆，與首次逐位元一致。
 
 ### 4. Replay 語意：回傳原始結果
 

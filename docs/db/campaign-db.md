@@ -91,19 +91,21 @@ CREATE INDEX idx_prizes_campaign_sort ON prizes (campaign_id, sort_order);
 
 -- -------------------------------------------------------------
 -- draw_records：抽獎結果（冪等 + replay 快照，ADR-005）
--- UNIQUE(user_id, campaign_id, idempotency_key) = 冪等最終保證
+-- 批次語意：單一 Idempotency-Key 對應整批；seq 為批內序號（單次=0，批次=0..N-1）
+-- UNIQUE(user_id, campaign_id, idempotency_key, seq) = 冪等最終保證
 -- -------------------------------------------------------------
 CREATE TABLE draw_records (
     id              BIGSERIAL    PRIMARY KEY,
     user_id         BIGINT       NOT NULL,  -- 邏輯引用 auth.users.id（無跨 DB FK）
     campaign_id     BIGINT       NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT,
     idempotency_key VARCHAR(36)  NOT NULL,  -- client UUID（ADR-005）
+    seq             INT          NOT NULL DEFAULT 0,  -- 批內序號：單次=0；批次=0..N-1
     result_type     VARCHAR(16)  NOT NULL,  -- 'WIN' / 'THANK_YOU'
     prize_id        BIGINT       NULL     REFERENCES prizes(id)   ON DELETE RESTRICT,  -- THANK_YOU 時 NULL
     payload_json    JSONB        NOT NULL,  -- replay 快照：本次回應之完整序列化結果（FR-CAMP-14 逐位元一致）
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key),
+    CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key, seq),
     CONSTRAINT chk_draw_records_result    CHECK (result_type IN ('WIN', 'THANK_YOU')),
     CONSTRAINT chk_draw_records_prize     CHECK (
         (result_type = 'WIN'       AND prize_id IS NOT NULL) OR
@@ -114,7 +116,8 @@ CREATE TABLE draw_records (
 COMMENT ON TABLE  draw_records               IS '抽獎結果（冪等 + replay 快照；抽獎次數的稽核真相）';
 COMMENT ON COLUMN draw_records.user_id       IS '執行抽獎之使用者（邏輯引用 auth.users.id，由 JWT sub 決定）';
 COMMENT ON COLUMN draw_records.campaign_id   IS '抽獎所屬活動（FK，由請求路徑決定）';
-COMMENT ON COLUMN draw_records.idempotency_key IS '冪等識別（client UUID，一次點擊一個）；複合鍵 userId+campaignId+key';
+COMMENT ON COLUMN draw_records.idempotency_key IS '冪等識別（client UUID，一次點擊一個）；複合鍵 userId+campaignId+key+seq';
+COMMENT ON COLUMN draw_records.seq           IS '批內序號：單次抽獎=0；批次 count=N 為 0..N-1（配合單一冪等鍵對應整批，FR-CAMP-08）';
 COMMENT ON COLUMN draw_records.result_type   IS 'WIN（中獎）/ THANK_YOU（銘謝惠顧，含庫存不足降級）';
 COMMENT ON COLUMN draw_records.prize_id      IS '中獎獎品（WIN 時指向 PRIZE 獎品；THANK_YOU 時 NULL，見 §3.3 決策）';
 COMMENT ON COLUMN draw_records.payload_json  IS 'replay 快照：本次回應的完整序列化 JSON（含獎品名稱/機率快照），供重送時逐位元一致回傳（FR-CAMP-14）';
@@ -142,7 +145,8 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | （新增，排序語意） | `prizes.sort_order` | `INT` | No | NOT NULL, DEFAULT 0 | `idx_prizes_campaign_sort(campaign_id, sort_order)` |
 | `user_id` | `draw_records.user_id` | `BIGINT` | No | NOT NULL（邏輯引用，無 FK） | 複合 UNIQUE 前綴 `(user_id, campaign_id)` |
 | `campaign_id` | `draw_records.campaign_id` | `BIGINT` | No | NOT NULL, FK→`campaigns` | 複合 UNIQUE 前綴 + `idx_draw_records_campaign_created` |
-| `idempotency_key` | `draw_records.idempotency_key` | `VARCHAR(36)` | No | NOT NULL（UUID） | 複合 UNIQUE 尾段 |
+| `idempotency_key` | `draw_records.idempotency_key` | `VARCHAR(36)` | No | NOT NULL（UUID） | 複合 UNIQUE 尾前段 |
+| `seq` | `draw_records.seq` | `INT` | No | NOT NULL, DEFAULT 0（單次=0；批次=0..N-1） | 複合 UNIQUE 尾段 |
 | `result_type` | `draw_records.result_type` | `VARCHAR(16)` | No | NOT NULL, `CHECK(WIN/THANK_YOU)` | — |
 | `prize_id` | `draw_records.prize_id` | `BIGINT` | **Yes**（THANK_YOU） | FK→`prizes`（RESTRICT）, `CHECK` 與 result_type 對齊 | — |
 | （新增，replay 快照） | `draw_records.payload_json` | `JSONB` | No | NOT NULL | — |
@@ -153,7 +157,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 
 | 型別 | 名稱 | 說明 | 對應需求 |
 |------|------|------|---------|
-| UNIQUE | `uq_draw_records_idem(user_id, campaign_id, idempotency_key)` | **冪等最終保證**（ADR-005 第二道防線） | `FR-CAMP-13/14` |
+| UNIQUE | `uq_draw_records_idem(user_id, campaign_id, idempotency_key, seq)` | **冪等最終保證**（ADR-005 第二道防線）；`seq` 使批次（單一 key、N 筆）不撞唯一約束 | `FR-CAMP-13/14`, `FR-CAMP-08` |
 | CHECK | `chk_campaigns_status` | 狀態機合法值 | `FR-CAMP-01` |
 | CHECK | `chk_campaigns_time` | `end_time > start_time` | SA UC-1 |
 | CHECK | `chk_campaigns_draw_limit` | `draw_limit >= 1` | SA UC-1 |
@@ -230,6 +234,7 @@ erDiagram
         bigint user_id
         bigint campaign_id FK
         varchar idempotency_key
+        int seq
         varchar result_type
         bigint prize_id FK
         jsonb payload_json

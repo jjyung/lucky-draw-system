@@ -17,6 +17,8 @@ public final class ErrorCodes {
     public static final String PROBABILITY_SUM_INVALID = "A0303";
     public static final String PROBABILITY_OUT_OF_RANGE = "A0304";
     public static final String MISSING_THANK_YOU = "A0305";
+    public static final String DRAW_LIMIT_EXCEEDED = "A0306";
+    public static final String IDEMPOTENCY_CONFLICT = "A0307";
     public static final String STRUCTURAL_INVALID = "A0000";
     public static final String SYSTEM_ERROR = "B0000";
 
@@ -38,5 +40,13 @@ public final class ErrorCodes {
 
     public static ApiException missingThankYou() {
         return new ApiException(MISSING_THANK_YOU, HttpStatus.UNPROCESSABLE_ENTITY, "至少需包含一個銘謝惠顧獎品");
+    }
+
+    public static ApiException drawLimitExceeded() {
+        return new ApiException(DRAW_LIMIT_EXCEEDED, HttpStatus.TOO_MANY_REQUESTS, "個人抽獎次數已達上限");
+    }
+
+    public static ApiException idempotencyConflict() {
+        return new ApiException(IDEMPOTENCY_CONFLICT, HttpStatus.CONFLICT, "冪等鍵衝突（併發重入）");
     }
 }

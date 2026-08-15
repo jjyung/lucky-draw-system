@@ -45,12 +45,13 @@ CREATE TABLE draw_records (
     user_id         BIGINT       NOT NULL,
     campaign_id     BIGINT       NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT,
     idempotency_key VARCHAR(36)  NOT NULL,
+    seq             INT          NOT NULL DEFAULT 0,
     result_type     VARCHAR(16)  NOT NULL,
     prize_id        BIGINT       NULL REFERENCES prizes(id) ON DELETE RESTRICT,
-    payload_json    JSONB        NOT NULL,
+    payload_json    JSON         NOT NULL,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key),
+    CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key, seq),
     CONSTRAINT chk_draw_records_result    CHECK (result_type IN ('WIN', 'THANK_YOU')),
     CONSTRAINT chk_draw_records_prize     CHECK (
         (result_type = 'WIN'       AND prize_id IS NOT NULL) OR
