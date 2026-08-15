@@ -1,25 +1,22 @@
-# --- Node / opencode toolchain (local only) ---
-node_modules/
-package.json
-package-lock.json
-bun.lock
-
-
-
-# --- Java / Gradle ---
+# Gradle
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+
+# Java
 *.class
 *.log
 
-# --- IDE ---
+# IDE
 .idea/
 *.iml
 .vscode/
 .DS_Store
 
-# --- Environment / secrets ---
+# Environment / secrets
 .env
 .env.*.local
 secrets/
+
+# openapi-generator 生成物（不入版控）
+**/build/generated/

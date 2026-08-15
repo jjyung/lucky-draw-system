@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+    id 'org.openapi.generator'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// openapi-generator：僅生成 DTO + API interface（ADR-011）
+openApiGenerate {
+    generatorName = 'spring'
+    inputSpec = "$rootDir/docs/api/openapi/auth-service.yaml"
+    outputDir = "$buildDir/generated"
+    apiPackage = 'com.luckydraw.auth.api'
+    modelPackage = 'com.luckydraw.auth.api.model'
+    // 只生成 interface 與 model，不生成 controller 實作
+    configOptions = [
+        interfaceOnly: 'true',
+        useSpringBoot3: 'true',
+        useTags: 'true',
+        openApiNullable: 'false',
+        documentationProvider: 'none'
+    ]
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir "$buildDir/generated/src/main/java"
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('openApiGenerate')
+}
