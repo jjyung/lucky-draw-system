@@ -257,6 +257,21 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 
 > 實作階段（寫 code）前必讀。這些決策把「文件 vs 實作漂移」交給工具強制，把「測試保護什麼」交給不變量判斷。
 
+### 12.0 開發方式速覽（新 session 接手先讀這張表）
+
+> 全專案一條主線：**每一層都有一個「真相來源」＋一個「工具強制一致」**，不靠人記得。
+
+| 層 | 真相來源 | 工具強制一致 |
+|----|----------|--------------|
+| 需求／情境 | 天條 §0 → story → SA | 追溯矩陣（story→FR→UC→AC→API） |
+| route / schema | OpenAPI YAML（`docs/api/openapi/`） | openapi-generator → `contracts` module |
+| DB schema | `docs/db/*.md` DDL | Flyway migration + `ddl-auto=validate` |
+| entity ↔ DTO | entity 欄位 | MapStruct + `unmappedTargetPolicy=ERROR` |
+| 業務不變量 | SA 的 business rule / AC | TDD unit test |
+
+- **動筆實作前，依序查**：① `docs/api/impl/<api-id>.md`（實作方式）→ ② `docs/stories/`（情境）→ ③ `docs/specs/<service>/`（UC/AC）→ ④ 對應 ADR。
+- **改任何真相來源，先回寫文件再改 code**（§7.3）：YAML / DDL / SA 變更都比 code 先行。
+
 ### 12.1 程式碼生成（ADR-011）
 
 | 面向 | 工具 | 方式 |
@@ -265,11 +280,21 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 | DB schema → ORM | Flyway + JPA | `docs/db/*.md` 的 DDL 直接落成 Flyway migration（DDL 是真相）；JPA entity 手寫（放 `model.entity`）、repository 獨立 package，`ddl-auto=validate` 啟動校驗一致 |
 | dev datasource | H2 `MODE=PostgreSQL` | 讓 migration 共用一份 PostgreSQL 方言 DDL；DataSource 依 env 切換（NFR-04）。**防超抽併發正確性仍以 PostgreSQL（Testcontainers）驗證** |
 
-- **package 慣例**：entity → `model.entity`；DTO 來自 `contracts`（generated）；手寫傳輸 DTO（若有）→ `model.dto`；value object → `model.vo`；repository → `repository`。
+- **package 慣例**：entity → `model.entity`；DTO 來自 `contracts`（generated）；手寫傳輸 DTO（若有）→ `model.dto`；value object → `model.vo`；repository → `repository`；mapper → `mapper`。
 - 生成物（`contracts/src/generated/`）**入版控、勿手改**；YAML 變更 → 重跑 generate。
 - 詳細理由與 Alternatives 見 [ADR-011](docs/adr/011-code-generation-persistence-strategy.md)。
 
-### 12.2 單元測試（TDD）
+### 12.2 物件映射與 boilerplate（ADR-012）
+
+| 面向 | 決策 | 理由 |
+|------|------|------|
+| entity ↔ DTO | **MapStruct** + `unmappedTargetPolicy=ERROR` | 編譯期欄位遺漏檢查（非為省 setter，效能與手寫相同） |
+| Lombok | **不用** | generated DTO 已自帶 accessor；`@Data`/`@Builder` 在 JPA entity 有 lazy-loading / 雙向關聯陷阱；隱式 code 是 review 負擔 |
+| 純資料載體 | **Java `record`** | immutable、getter 自動；JPA entity 不用 record（需可變 + 代理） |
+
+- 詳細理由見 [ADR-012](docs/adr/012-object-mapping-boilerplate.md)。
+
+### 12.3 單元測試（TDD）
 
 完整規約見 [`docs/rules/單元測試.md`](docs/rules/單元測試.md)。核心四條：
 
