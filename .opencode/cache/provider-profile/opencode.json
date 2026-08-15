@@ -1,0 +1,1 @@
+{"model":"opencode-go/deepseek-v4-pro","small_model":"opencode-go/deepseek-v4-flash","agent":{"spec-writer":{"model":"opencode-go/deepseek-v4-pro"},"code-reviewer":{"model":"opencode-go/deepseek-v4-pro"},"team-lead":{"model":"opencode-go/deepseek-v4-pro"},"architect":{"model":"opencode-go/deepseek-v4-pro"},"verifier":{"model":"opencode-go/deepseek-v4-flash"}}}

@@ -4,8 +4,7 @@ package.json
 package-lock.json
 bun.lock
 
-# --- opencode workspace config (local only) ---
-.opencode/
+
 
 # --- Java / Gradle ---
 .gradle/
