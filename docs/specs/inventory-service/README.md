@@ -19,7 +19,7 @@
 | [ADR-003](../../adr/003-redis-concurrency.md) | 併發控制（原子原語、計數） |
 | [ADR-005](../../adr/005-anti-double-draw-idempotency.md) | 防重複抽獎與冪等 |
 | [ADR-006](../../adr/006-anti-overselling.md) | 防超抽（庫存確認 + 扣減真相 + 補償） |
-| [ADR-007](../../adr/007-async-kafka-spring-cloud-stream.md) | 扣減通知的協作機制（可能重複投遞） |
+| [ADR-007](../../adr/007-async-messaging-spring-cloud-stream.md) | 扣減通知的協作機制（可能重複投遞） |
 | [risk-control.md](../../architecture/risk-control.md) | 最終一致性模型與收斂機制 |
 | [draw-flow.md](../../architecture/draw-flow.md) | 抽獎生命週期與失敗路徑（補償的執行細節來源） |
 

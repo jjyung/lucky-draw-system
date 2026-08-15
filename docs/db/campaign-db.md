@@ -100,6 +100,7 @@ CREATE TABLE draw_records (
     idempotency_key VARCHAR(36)  NOT NULL,  -- client UUID（ADR-005）
     result_type     VARCHAR(16)  NOT NULL,  -- 'WIN' / 'THANK_YOU'
     prize_id        BIGINT       NULL     REFERENCES prizes(id)   ON DELETE RESTRICT,  -- THANK_YOU 時 NULL
+    payload_json    JSONB        NOT NULL,  -- replay 快照：本次回應之完整序列化結果（FR-CAMP-14 逐位元一致）
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key),
@@ -116,6 +117,7 @@ COMMENT ON COLUMN draw_records.campaign_id   IS '抽獎所屬活動（FK，由�
 COMMENT ON COLUMN draw_records.idempotency_key IS '冪等識別（client UUID，一次點擊一個）；複合鍵 userId+campaignId+key';
 COMMENT ON COLUMN draw_records.result_type   IS 'WIN（中獎）/ THANK_YOU（銘謝惠顧，含庫存不足降級）';
 COMMENT ON COLUMN draw_records.prize_id      IS '中獎獎品（WIN 時指向 PRIZE 獎品；THANK_YOU 時 NULL，見 §3.3 決策）';
+COMMENT ON COLUMN draw_records.payload_json  IS 'replay 快照：本次回應的完整序列化 JSON（含獎品名稱/機率快照），供重送時逐位元一致回傳（FR-CAMP-14）';
 COMMENT ON COLUMN draw_records.created_at    IS '產生時間（UTC）';
 
 -- 依活動查詢抽獎記錄（管理/稽核，時間倒序）
@@ -143,6 +145,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | `idempotency_key` | `draw_records.idempotency_key` | `VARCHAR(36)` | No | NOT NULL（UUID） | 複合 UNIQUE 尾段 |
 | `result_type` | `draw_records.result_type` | `VARCHAR(16)` | No | NOT NULL, `CHECK(WIN/THANK_YOU)` | — |
 | `prize_id` | `draw_records.prize_id` | `BIGINT` | **Yes**（THANK_YOU） | FK→`prizes`（RESTRICT）, `CHECK` 與 result_type 對齊 | — |
+| （新增，replay 快照） | `draw_records.payload_json` | `JSONB` | No | NOT NULL | — |
 | 抽獎次數（派生計數） | （**不落 DB 欄位**） | — | — | — | 見 §3.2 註記 |
 | （新增） | `draw_records.created_at` | `TIMESTAMPTZ` | No | DEFAULT now() | `idx_draw_records_campaign_created` |
 
@@ -166,15 +169,16 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 
 **註記 — 抽獎次數（派生計數）**：SA §5.3 明確「抽獎次數是『使用者 × 活動』維度的派生計數，不是單一抽獎記錄的欄位」。runtime 由 Redis 計數器 `draw_count:{userId}:{campaignId}` 承載（ADR-003），`draw_records` 是其**稽核真相**（每筆成功抽獎 +1，批次 +N）。因此 Campaign DB **不建立**獨立的 draw_count 表。
 
+**註記 — replay 快照（`payload_json`）**：`FR-CAMP-14` 要求重送時回傳「與首次**逐位元一致**」的結果。若只存 `result_type` + `prize_id`，重送時需重新組裝 response，但獎品名稱/機率可能已被 ADMIN 動態改過（`FR-CAMP-05`），無法保證逐位元一致。故以 `payload_json`（JSONB）儲存**首次回應的完整序列化快照**，replay 時直接回傳快照，不重新組裝。此欄位亦呼應 `risk-control.md` §3.2 的 INSERT 語意（`payload_json`）。
+
 **註記 — `updated_at` 維護**：`campaigns.updated_at` 由 app 層維護（Spring Data JPA `@LastModifiedDate`），不建 DB trigger，以利 dev SQLite/H2 共用。
 
 ### 3.3 決策：`prize_id` 對銘謝惠顧為 NULL
 
-- SA §5.3 語意將 `prize_id` 記為「銘謝惠顧時指向 `THANK_YOU` 獎品」；本 SD 設計採 **`THANK_YOU` 時 `prize_id = NULL`**，理由：
+- SA §5.3 語意**即為**「銘謝惠顧 `THANK_YOU` 時 `prize_id = null`」，本 SD 設計與之**一致**，採 **`THANK_YOU` 時 `prize_id = NULL`**，理由：
   1. `result_type = 'THANK_YOU'` 已完整表達「銘謝惠顧」語意，不需再冗餘指向 `THANK_YOU` 獎品列。
   2. 與 runtime 流程一致（`draw-flow.md`：THANK_YOU 落庫不帶 prize_id）。
   3. 以 `CHECK (result_type ↔ prize_id nullability)` 固化「WIN 必有獎品、THANK_YOU 必無獎品」的不變量，避免資料矛盾。
-- 此差異已記錄於本文件與驗證報告，若後續採納 SA 原語意（THANK_YOU 亦指向 THANK_YOU 獎品），僅需移除該 CHECK 並改為 `prize_id NOT NULL`。
 
 ---
 
@@ -186,6 +190,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | `status`/`type`/`result_type` | `VARCHAR(n)` + CHECK | 同左（CHECK 由 SQLite 強制） | 同左 |
 | `probability` | `NUMERIC(5,2)` | `NUMERIC`（近似 REAL，浮點誤差） | `NUMERIC(5,2)` |
 | `start_time`/`end_time` | `TIMESTAMPTZ` | `TEXT`（ISO-8601） | `TIMESTAMP WITH TIME ZONE` |
+| `payload_json` | `JSONB` | `TEXT`（存 JSON 字串，無 JSON 型別） | `JSON` / `CLOB` |
 | `created_at DESC` index | 支援 | 支援 | 支援 |
 
 > ⚠️ `probability` 在 SQLite 的 `NUMERIC` 近似可能造成「總和 100%」驗證（`FR-CAMP-04`）的浮點容差需要更寬容的 dev 參數；prod 用 `NUMERIC(5,2)` 精確十進位，無此問題。
@@ -227,6 +232,7 @@ erDiagram
         varchar idempotency_key
         varchar result_type
         bigint prize_id FK
+        jsonb payload_json
         timestamptz created_at
     }
 ```

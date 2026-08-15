@@ -15,7 +15,7 @@
 
 ## Decision
 
-採用 **「Redis 原子預扣（前置加速層）＋ Kafka event 異步觸發 DB 條件更新（最終真相來源）」** 的兩段式設計：
+採用 **「Redis 原子預扣（前置加速層）＋ 異步 event 觸發 DB 條件更新（最終真相來源）」** 的兩段式設計：
 
 ### 第一段：Redis Lua 原子預扣（熱點路徑）
 
@@ -38,7 +38,7 @@ end
 
 ### 第二段：DB 條件更新（真相來源）
 
-- campaign-service 抽中實體獎品後，發布 **Kafka event：`inventory-commit`**（見 ADR-007），由 **inventory-service 的 async consumer** 消費。
+- campaign-service 抽中實體獎品後，發布 **`inventory-commit` event**（見 ADR-007，Spring Cloud Stream + RabbitMQ binder），由 **inventory-service 的 async consumer** 消費。
 - consumer 執行**原子條件更新**（database-per-service，inventory DB）：
 
 ```sql
@@ -54,8 +54,8 @@ UPDATE inventory SET stock = stock - 1 WHERE id = ? AND stock > 0
 | 情境 | 處理 |
 |------|------|
 | Redis 預扣回傳 0（庫存不足） | 抽獎結果**降級為銘謝惠顧（THANK_YOU）**，不發布 inventory-commit；client 拿到「未中獎」結果 |
-| `inventory-commit` 消費後 DB 條件更新影響 0 列（Redis 與 DB 帳面不一致） | **補償（compensation）**：inventory-service 記錄異常、回滾該次中獎結果（如將 draw_record 標記為 VOID / 產生 `draw_reversal`），並發出 alert；後續以 DB 為準修正 Redis 計數器 |
-| consumer 當機 / event 遺失 | Kafka 的 at-least-once + consumer group offset 確保 event 最終被處理；consumer 需要**冪等**（依 `draw_record_id` 去重，避免重複扣 DB） |
+| `inventory-commit` 消費後 DB 條件更新影響 0 列（Redis 與 DB 帳面不一致） | **補償（compensation）**：inventory-service 將該筆預留標記為 `REVERSED`（`reservations.status`，見 inventory-db §3.5，**不跨 DB 回寫** campaign 的 draw_record），並發出 alert；後續以 DB 為準修正 Redis 計數器 |
+| consumer 當機 / event 遺失 | broker 的 at-least-once + consumer group offset 確保 event 最終被處理；consumer 需要**冪等**（依 `draw_record_id` 去重，避免重複扣 DB） |
 | 活動結束清理 | 由 DB 剩餘庫存 + 預留記錄（`reservations`）對帳，校正 Redis 計數器 |
 
 ### 計數與扣減語意
@@ -75,7 +75,7 @@ UPDATE inventory SET stock = stock - 1 WHERE id = ? AND stock > 0
 
 - **最終一致性（eventual consistency）**：Redis 顯示「還有貨」與 DB 實際出帳之間有時間窗，需靠對帳與補償機制收斂；不能做到讀到的庫存 100% 即時精確。
 - **補償邏輯複雜**：DB 條件更新失敗時需要回滾中獎結果 + 修 Redis，是系統中最容易出 bug 的路徑，需要完整測試覆蓋（Testcontainers + integration test）。
-- **Kafka/RabbitMQ 成為關鍵路徑**：`inventory-commit` 依賴消息佇列可靠投遞，broker 故障會導致庫存扣減延遲（但不超抽，只是出貨慢），需監控 backlog。
+- **Broker 成為關鍵路徑**：`inventory-commit` 依賴消息佇列可靠投遞，broker 故障會導致庫存扣減延遲（但不超抽，只是出貨慢），需監控 backlog。
 - **Redis 與 DB 對帳**：需要定期對帳 job 將 Redis counter 與 DB 校正一致。
 
 ## Alternatives

@@ -19,7 +19,7 @@
 
 ### 1. 銘謝惠顧建模為獎品
 
-**銘謝惠顧是一個 type = `THANK_YOU` 的獎品**，與實體獎品（type = `PHYSICAL` / `COUPON` 等）一樣存在 `prizes` table、一樣有機率欄位。好處是：
+**銘謝惠顧是一個 type = `THANK_YOU` 的獎品**，與實體獎品（type = `PRIZE`）一樣存在 `prizes` table、一樣有機率欄位。好處是：
 
 - 抽獎邏輯只需面對「一份獎品清單 + 一個隨機值」，不需要特殊 if-branch。
 - 機率總和檢查天然涵蓋銘謝惠顧。

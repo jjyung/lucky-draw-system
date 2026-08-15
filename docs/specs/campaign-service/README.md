@@ -18,7 +18,7 @@
 | [ADR-004](../../adr/004-weighted-draw-algorithm.md) | 抽獎選取（銘謝惠顧建模、機率總和 100%） |
 | [ADR-005](../../adr/005-anti-double-draw-idempotency.md) | 防重複抽獎與冪等（replay 語意） |
 | [ADR-006](../../adr/006-anti-overselling.md) | 防超抽（庫存確認 + 庫存不足降級） |
-| [ADR-007](../../adr/007-async-kafka-spring-cloud-stream.md) | 通知庫存扣減的協作機制 |
+| [ADR-007](../../adr/007-async-messaging-spring-cloud-stream.md) | 通知庫存扣減的協作機制 |
 | [draw-flow.md](../../architecture/draw-flow.md) | 抽獎生命週期與失敗路徑（本文件行為描述的執行細節來源） |
 | [risk-control.md](../../architecture/risk-control.md) | 併發控制與最終一致性 |
 
@@ -233,7 +233,7 @@ DRAFT ──► ACTIVE ──► ENDED (終態)
 | `THANK_YOU` | 銘謝惠顧，未中獎品 | 權重抽選命中 `THANK_YOU` 獎品；或命中獎品但庫存不足而**降級** |
 | `WIN` | 中獎（命中任一獎品） | 抽選命中獎品且庫存確認足夠 |
 
-> **註**：`VOID`（撤銷）是 inventory-service 在庫存扣減發現不足時的**補償狀態**（ADR-006 Path C），屬下游補償語意，非抽獎本身之正常結果；campaign-service 的業務結果型別僅上述兩種，`VOID` 由下游回寫，SA 於此僅註記其存在。
+> **註**：庫存扣減發現不足時的補償，由 inventory-service 將預留記錄標記為 `REVERSED`（`reservations.status`，見 inventory-db §3.5），**不跨 DB 回寫** campaign 的 `draw_records`（ADR-002 無跨 DB 寫入）。故 campaign-service 的業務結果型別僅上述兩種（`WIN`/`THANK_YOU`），無 `VOID`/`REVERSED` 狀態；下游補償語意以事件/告警通知營運處理（SA inventory UC-2），SA 於此僅註記其存在。
 
 ### 4.3 業務語意問題（AGENTS.md §3 要求回答）
 

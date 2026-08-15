@@ -48,7 +48,7 @@
 
 ### 3.1 跨服務資料交換（無跨 schema FK）
 
-跨服務資料交換一律透過 **API 呼叫或 Kafka event**（ADR-002 / ADR-007）。因此：
+跨服務資料交換一律透過 **API 呼叫或 event**（ADR-002 / ADR-007）。因此：
 
 - **跨 schema 之間沒有 FK**。`prize_id`、`draw_record_id`、`user_id` 在非屬主 schema 中是**邏輯引用（logical reference）**，其值由事件/API 攜帶，不做外鍵約束。
 - 這表示**沒有跨 schema 的 transaction**；一致性由 event + 補償（compensation）+ 對帳（reconciliation）達成最終一致（ADR-006）。

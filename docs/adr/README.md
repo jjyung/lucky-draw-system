@@ -12,7 +12,7 @@
 | [004](004-weighted-draw-algorithm.md) | 權重隨機抽獎演算法 (Weighted Random Draw) | Accepted | 2026-08-13 |
 | [005](005-anti-double-draw-idempotency.md) | 防重複抽獎與冪等性 (Anti-Double-Draw & Idempotency) | Accepted | 2026-08-13 |
 | [006](006-anti-overselling.md) | 防超抽機制 (Anti-Overselling) | Accepted | 2026-08-13 |
-| [007](007-async-kafka-spring-cloud-stream.md) | 異步消息 — Spring Cloud Stream + RabbitMQ | Accepted | 2026-08-13 |
+| [007](007-async-messaging-spring-cloud-stream.md) | 異步消息 — Spring Cloud Stream + RabbitMQ | Accepted | 2026-08-13 |
 | [008](008-deployment-cloud-run.md) | 部署架構 — GCP Cloud Run | Accepted | 2026-08-13 |
 | [009](009-security-jwt-gateway.md) | 安全機制 — JWT + Gateway 驗證 (JWT RS256) | Accepted | 2026-08-13 |
 | [010](010-inventory-stock-provisioning.md) | 庫存初始與配置同步 (Inventory Stock Provisioning) | Accepted | 2026-08-14 |

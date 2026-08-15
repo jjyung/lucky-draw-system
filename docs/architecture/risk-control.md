@@ -133,7 +133,7 @@ rate:user:{userId}:minute
 
 ```text
 T0  Campaign Lua 預扣 stock:{prizeId} 50→49   (Redis)
-T1  Campaign 落庫 draw_record (type=PHYSICAL)
+T1  Campaign 落庫 draw_record (result_type=WIN)
 T2  Campaign 發布 inventory-commit ──────────► Inventory Service
 T3  Inventory 條件更新 DB stock 50→49          (DB 真相)
                     │

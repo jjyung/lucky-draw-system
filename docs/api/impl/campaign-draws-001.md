@@ -73,7 +73,7 @@ sequenceDiagram
 2. **冪等鎖（ADR-005 第一線）**：`SETNX lock:draw:{userId}:{campaignId}:{idemKey} NX PX 30000`。
    - 取得失敗 → 併發重入，回 `409` + `A0307`。
 3. **Replay 查詢**：以複合鍵 `userId + campaignId + idempotencyKey` 查 `draw_records`。
-   - 已有記錄 → 回傳既有結果快照（`200`，逐位元一致），**不重抽、不重扣庫存、不重扣次數**（AC-CAMP-012/013）。
+   - 已有記錄 → 回傳 `payload_json` 快照（`200`，逐位元一致），**不重抽、不重扣庫存、不重扣次數**（AC-CAMP-012/013）。快照來自首次回應之完整序列化（DB §3.2 註記），不重新組裝，避免獎品名稱/機率被動態改動後無法逐位元一致。
 4. **個人次數檢查（`A0306`）**：以 `drawLimit`（活動期間總額）與 `draw_count:{userId}:{campaignId}` 計算剩餘次數。
    - `count > 剩餘次數` → `429` + `A0306`；**批次不足整批不執行**（不產生部分結果，AC-CAMP-006/007/010）。
 5. **權重隨機抽選（ADR-004）**：讀取活動獎品（固定 `sort_order` 順序），對每次抽選產生單一 `random ∈ [0,100)`，走累計機率區間命中獎品。批次 `count=N` 執行 N 次獨立抽選。
@@ -82,6 +82,7 @@ sequenceDiagram
 7. **記錄 draw_records（ADR-005 第二線 DB UNIQUE）**：INSERT 每筆結果：
    - `result_type` = `WIN` / `THANK_YOU`；
    - `prize_id`：`WIN` → 中獎獎品 id；`THANK_YOU` → **NULL**（DB §3.3）；
+   - `payload_json`：本次回應的完整序列化快照（replay 逐位元一致來源，DB §3.2 註記）；
    - `idempotency_key` 落複合 UNIQUE 鍵。撞 UNIQUE → 轉 replay 查表回傳（理論上已被鎖擋）。
 8. **計次（ADR-003）**：`INCR draw_count:{userId}:{campaignId}` 一次 `+N`（僅成功產生結果的請求計次；replay/超限不計）。TTL 對齊活動 `end_time`。
 9. **發布 `inventory-commit`（ADR-007）**：對每筆 `WIN` 結果發布事件 `(drawRecordId, prizeId, quantity=1)`；`THANK_YOU`（含降級）不發布。`drawRecordId` 為下游冪等鍵（ADR-006）。事件異步投遞，campaign 不等待 inventory 扣減。

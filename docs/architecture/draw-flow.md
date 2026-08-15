@@ -35,11 +35,11 @@ sequenceDiagram
     CS->>R: Lua 預扣 stock:{prizeId}<br/>GET stock / if >0 DECR
     alt 庫存不足 (Lua 回傳 0)
         CS->>CS: 結果降級為 THANK_YOU (銘謝惠顧)
-        CS->>DB: INSERT draw_record (type=THANK_YOU, idem_key)
+        CS->>DB: INSERT draw_record (result_type=THANK_YOU, prize_id=NULL, idem_key)
         CS-->>C: 200 OK 銘謝惠顧
     end
 
-    CS->>DB: INSERT draw_record<br/>(type=PHYSICAL, prize_id, idem_key)
+    CS->>DB: INSERT draw_record<br/>(result_type=WIN, prize_id, idem_key)
     CS->>R: INCR draw_count:{userId}:{campaignId}<br/>(TTL 對齊活動結束時間)
     CS->>MQ: publish inventory-commit<br/>(drawRecordId, prizeId, quantity=1)
     CS-->>C: 200 OK + 中獎結果 (prize id/name)
@@ -50,7 +50,7 @@ sequenceDiagram
     alt 影響 1 列
         INV->>INV: commit 成功，回寫 reservations
     else 影響 0 列 (DB 與 Redis 帳面不一致)
-        INV->>INV: 補償：draw_record 標記 VOID / 產生 draw_reversal<br/>觸發 alert，修正 Redis counter
+        INV->>INV: 補償：reservations.status=REVERSED<br/>觸發 alert，修正 Redis counter
     end
 ```
 
@@ -132,7 +132,7 @@ sequenceDiagram
     Note over DB: 影響 0 列 (Redis 期間誤判有貨)
     DB-->>INV: rowcount = 0
     INV->>INV: 判定為異常扣減
-    INV->>DB: INSERT draw_reversal (drawRecordId=42)<br/>/ 或將 draw_record 標記 VOID
+    INV->>DB: UPDATE reservations SET status='REVERSED'<br/>(drawRecordId=42)<br/>不跨 DB 回寫 campaign.draw_records
     INV->>R: 校對並修正 stock:{prizeId} 計數器
     INV->>INV: 發送 alert / 對帳任務撈取
     Note over INV: 用戶端看到的「中獎」結果在此被撤銷<br/>(需在產品面上定義補償規則：如補償券)
