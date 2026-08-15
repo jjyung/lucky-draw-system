@@ -196,6 +196,6 @@ docs/api/
 
 ## 6. 待確認的開放點 (Open Points for Review)
 
-1. **campaign 詳情端點**（`campaign-campaigns-002`）：SA 未明列「活動詳情」，但 client 抽獎前需展示活動資訊。預設納入；若採最小範圍可砍。
+1. **~~campaign 詳情端點~~**（`campaign-campaigns-002`）：**已回寫** — 補入 story `ST-CAMP-010`（瀏覽活動）與 SA `UC-6`（campaign-service），隱含需求已顯式化，此開放點關閉。
 2. **抽獎 response 的 `data` 形狀**：單次回傳單一結果物件、批次回傳 `{ draws: [...] }`（詳見 campaign-service.yaml）。
 3. **`PATCH .../status` 的請求體**：`{ "status": "ACTIVE" }` 或專屬 action（`POST .../activate`）。預設採 `PATCH` + `{status}`。
