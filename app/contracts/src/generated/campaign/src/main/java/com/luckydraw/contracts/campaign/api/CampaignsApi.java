@@ -178,10 +178,9 @@ public interface CampaignsApi {
 
 
     /**
-     * POST /campaigns/{campaignId} : 建立活動 [campaign-campaigns-003]
+     * POST /campaigns : 建立活動 [campaign-campaigns-003]
      * 建立抽獎活動（UC-1），**需 &#x60;ROLE_ADMIN&#x60;**。建立後初始狀態固定為 &#x60;DRAFT&#x60;（尚不可被 USER 抽獎）。  - 必填欄位：&#x60;name&#x60;（非空）、&#x60;startTime&#x60;（早於 &#x60;endTime&#x60;）、&#x60;endTime&#x60;、&#x60;drawLimit&#x60;（正整數 ≥ 1）。 - &#x60;drawLimit&#x60; 語意：**每個使用者於本活動整個週期的總抽獎次數上限**（非每日重置，AC-CAMP-007）。 - &#x60;status&#x60;/&#x60;id&#x60; 由伺服端產生，client 不得指定。 - 驗證失敗（名稱空／時間先後非法／上限非正整數）→ &#x60;400&#x60;（&#x60;A0000&#x60;），不建立活動。  **Traceability:** &#x60;FR-CAMP-01&#x60; / &#x60;AC-CAMP-005&#x60; 
      *
-     * @param campaignId 活動唯一識別（正整數，對應 &#x60;campaigns.id&#x60; BIGSERIAL）。scope 由伺服端依路徑決定，不信任 client 傳入值。 (required)
      * @param postCampaignsRequestDTO  (required)
      * @return 建立成功，回傳活動（狀態為 DRAFT） (status code 201)
      *         or 輸入驗證失敗（名稱空／結束早於開始／上限非正整數）→ &#x60;A0000&#x60; (status code 400)
@@ -190,13 +189,12 @@ public interface CampaignsApi {
      */
     @RequestMapping(
         method = RequestMethod.POST,
-        value = "/campaigns/{campaignId}",
+        value = "/campaigns",
         produces = { "application/json" },
         consumes = { "application/json" }
     )
     
     default ResponseEntity<PostCampaignsResponseDTO> postCampaigns(
-        @Min(1L)  @PathVariable("campaignId") Long campaignId,
          @Valid @RequestBody PostCampaignsRequestDTO postCampaignsRequestDTO
     ) {
         getRequest().ifPresent(request -> {

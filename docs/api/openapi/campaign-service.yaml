@@ -110,70 +110,6 @@ paths:
                 message: "系統錯誤"
                 data: null
 
-  /campaigns/{campaignId}:
-    parameters:
-      - $ref: '#/components/parameters/CampaignIdParam'
-    get:
-      tags: [campaigns]
-      summary: 活動詳情 [campaign-campaigns-002]
-      description: |
-        回傳單一活動詳情（PUBLIC，不需登入）。
-
-        - 與列表相同，**不暴露 `drawLimit`**（管理欄位）。
-        - **可含獎品列表**（供 client 抽獎前展示「可贏得什麼」）：獎品清單僅回
-          `id/name/type`，**不暴露 `probability`/`quantity`**（SA §5.2 敏感營運參數）。
-        - 活動不存在 → `404`（`A0301`）。
-
-        **Traceability:** `FR-CAMP-01`（查）
-      operationId: getCampaignById
-      security: []          # PUBLIC（不需登入）
-      responses:
-        '200':
-          description: 成功，回傳活動詳情（含獎品清單，不含敏感欄位）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetCampaignByIdResponseDTO'
-              example:
-                code: "00000"
-                message: "OK"
-                data:
-                  id: 1
-                  name: "新春抽獎"
-                  status: "ACTIVE"
-                  startTime: "2026-02-01T00:00:00Z"
-                  endTime: "2026-02-15T23:59:59Z"
-                  prizes:
-                    - id: 11
-                      name: "iPhone 16"
-                      type: "PRIZE"
-                    - id: 12
-                      name: "折價券 100 元"
-                      type: "PRIZE"
-                    - id: 13
-                      name: "銘謝惠顧"
-                      type: "THANK_YOU"
-        '404':
-          description: 活動不存在 → `A0301`
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-              example:
-                code: "A0301"
-                message: "活動不存在"
-                data: null
-        '500':
-          description: 系統錯誤 → `B0000`
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-              example:
-                code: "B0000"
-                message: "系統錯誤"
-                data: null
-
     post:
       tags: [campaigns]
       summary: 建立活動 [campaign-campaigns-003]
@@ -231,6 +167,70 @@ paths:
               example:
                 code: "A0400"
                 message: "權限不足"
+                data: null
+        '500':
+          description: 系統錯誤 → `B0000`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "B0000"
+                message: "系統錯誤"
+                data: null
+
+  /campaigns/{campaignId}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignIdParam'
+    get:
+      tags: [campaigns]
+      summary: 活動詳情 [campaign-campaigns-002]
+      description: |
+        回傳單一活動詳情（PUBLIC，不需登入）。
+
+        - 與列表相同，**不暴露 `drawLimit`**（管理欄位）。
+        - **可含獎品列表**（供 client 抽獎前展示「可贏得什麼」）：獎品清單僅回
+          `id/name/type`，**不暴露 `probability`/`quantity`**（SA §5.2 敏感營運參數）。
+        - 活動不存在 → `404`（`A0301`）。
+
+        **Traceability:** `FR-CAMP-01`（查）
+      operationId: getCampaignById
+      security: []          # PUBLIC（不需登入）
+      responses:
+        '200':
+          description: 成功，回傳活動詳情（含獎品清單，不含敏感欄位）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCampaignByIdResponseDTO'
+              example:
+                code: "00000"
+                message: "OK"
+                data:
+                  id: 1
+                  name: "新春抽獎"
+                  status: "ACTIVE"
+                  startTime: "2026-02-01T00:00:00Z"
+                  endTime: "2026-02-15T23:59:59Z"
+                  prizes:
+                    - id: 11
+                      name: "iPhone 16"
+                      type: "PRIZE"
+                    - id: 12
+                      name: "折價券 100 元"
+                      type: "PRIZE"
+                    - id: 13
+                      name: "銘謝惠顧"
+                      type: "THANK_YOU"
+        '404':
+          description: 活動不存在 → `A0301`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                code: "A0301"
+                message: "活動不存在"
                 data: null
         '500':
           description: 系統錯誤 → `B0000`
