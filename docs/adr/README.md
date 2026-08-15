@@ -16,6 +16,7 @@
 | [008](008-deployment-cloud-run.md) | 部署架構 — GCP Cloud Run | Accepted | 2026-08-13 |
 | [009](009-security-jwt-gateway.md) | 安全機制 — JWT + Gateway 驗證 (JWT RS256) | Accepted | 2026-08-13 |
 | [010](010-inventory-stock-provisioning.md) | 庫存初始與配置同步 (Inventory Stock Provisioning) | Accepted | 2026-08-14 |
+| [011](011-code-generation-persistence-strategy.md) | 程式碼生成與持久層策略 (Code Gen & Persistence Strategy) | Accepted | 2026-08-15 |
 
 ## 決策之間的關聯
 
@@ -31,6 +32,7 @@ graph TD
     A8["ADR-008 Cloud Run 部署"]
     A9["ADR-009 JWT + Gateway 安全"]
     A10["ADR-010 庫存配置同步"]
+    A11["ADR-011 Code Gen + Persistence"]
 
     A1 --> A2
     A1 --> A7
@@ -47,6 +49,8 @@ graph TD
     A2 --> A10
     A6 --> A10
     A7 --> A10
+    A2 --> A11
+    A11 --> A1
 ```
 
 ## 尚未決定的議題（Open Items）

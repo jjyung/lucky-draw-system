@@ -250,3 +250,30 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 - **錯誤碼只從 `docs/api/error-list.md` 引用**，不得在各 API 文件自造語意重複的 code。
 - **API ID 是唯一鍵**：OpenAPI `operationId`、`docs/api/impl/` 檔名、`docs/api/api-list/` 索引、追溯矩陣，四處必須一致。
 - 實作中若發現 API 契約需變更 → 先回寫 OpenAPI + 本索引，再改 code（§7.3）。
+
+---
+
+## 12. 測試與程式碼生成紀律 (Testing & Code Generation)
+
+> 實作階段（寫 code）前必讀。這些決策把「文件 vs 實作漂移」交給工具強制，把「測試保護什麼」交給不變量判斷。
+
+### 12.1 程式碼生成（ADR-011）
+
+| 面向 | 工具 | 方式 |
+|------|------|------|
+| API → code | openapi-generator | 只生成 **API interface + DTO**（auth-service、campaign-service 兩服務）；controller 手寫 `implements`。gateway/inventory **不走** codegen |
+| DB schema → ORM | Flyway + JPA | `docs/db/*.md` 的 DDL 直接落成 Flyway migration（DDL 是真相）；JPA entity 手寫，`ddl-auto=validate` 啟動校驗一致 |
+| dev datasource | H2 `MODE=PostgreSQL` | 讓 migration 共用一份 PostgreSQL 方言 DDL；DataSource 依 env 切換（NFR-04）。**防超抽併發正確性仍以 PostgreSQL（Testcontainers）驗證** |
+
+- 生成物（`build/generated`）**不入版控、勿手改**；手寫與生成的邊界要紀律化。
+- 詳細理由與 Alternatives 見 [ADR-011](docs/adr/011-code-generation-persistence-strategy.md)。
+
+### 12.2 單元測試（TDD）
+
+完整規約見 [`docs/rules/單元測試.md`](docs/rules/單元測試.md)。核心四條：
+
+1. **unit = 單一行為單元，不是方法**；測試保護**不變量**，不是 coverage。
+2. **寫前先問**：「這條規則改錯，哪個業務受害？」受害的那個，才值得測。不變量從 SA 的 business rule / AC 擷取。
+3. **mock 預設 classical**：Stub 給固定答案 + state verification；少用 behavior verification（鎖實作）。需 mock DB/HTTP/MQ 才能測 → 先重構分離，不是補 mock。
+4. **AI 生成測試三坑**（審查用）：鏡射實作、重述錯誤邏輯、全 happy path。以三問過篩（換一種正確寫法還過嗎？需求誤解抓得到嗎？唯一會紅的理由是「有人改實作」嗎？）。
+5. **TDD 節奏**：Red→Green→Refactor，小步快跑；compile suite 秒級、commit suite ≤10 分鐘。
