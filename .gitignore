@@ -3,6 +3,9 @@
 build/
 !app/gradle/wrapper/gradle-wrapper.jar
 
+# IDE build output (IntelliJ IDEA compile to bin/)
+bin/
+
 # Java
 *.class
 *.log
