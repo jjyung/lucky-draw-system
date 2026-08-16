@@ -41,6 +41,11 @@ public class InventoryReconciliationService {
         this.redisClient = redisClient;
     }
 
+    /** package-private（測試用）：設定逾時判定基準秒數。 */
+    void setReservationTimeoutSeconds(long seconds) {
+        this.reservationTimeoutSeconds = seconds;
+    }
+
     /**
      * 定期校對（啟動後立即一次以種子 Redis 即時判定層，此後每 5 分鐘）。
      */

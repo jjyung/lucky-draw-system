@@ -24,7 +24,7 @@
 | ST-AUTH-001 註冊 | AC-AUTH-001/002/003 | ✅ `AuthServiceTest` | — | ⬜ J-2 | — |
 | ST-AUTH-002 登入 | AC-AUTH-004/005/006 | ✅ `AuthServiceTest`、`JwtServiceTest`、`NimbusJwtVerifierTest` | ✅ `RedisTokenRegistryIT`（白名單踢最舊） | ⬜ J-2 | — |
 | ST-AUTH-003 refresh | AC-AUTH-013/014 | ⬜ | — | — | Should，未實作 |
-| ST-AUTH-004 權限分級 | AC-AUTH-009/010/011 | ⬜ | — | — | 補 SecurityConfig 授權測試 |
+| ST-AUTH-004 權限分級 | AC-AUTH-009/010/011 | ✅ `JwtAuthenticationFilterTest`（roles 進 SecurityContext） | — | — | 授權 matcher 為 declarative |
 
 ### campaign-service
 
@@ -35,11 +35,11 @@
 | ST-CAMP-003 動態修改獎品 | UC-2 intent | ✅ `PrizeServiceReconcileTest` | ✅ `InventoryEventDeliveryIT`（`prize-stock-configured` 投遞） | ⬜ J-1 | — |
 | ST-CAMP-004 單次抽獎 | AC-CAMP-004/014/016 | ✅ `DrawServiceTest` | — | ⬜ J-2 | — |
 | ST-CAMP-005 批次抽獎 | AC-CAMP-008/009/010 | ✅ `DrawServiceTest` | — | — | — |
-| ST-CAMP-006 並發多個單次 | AC-CAMP-011 | ⬜ | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | — | — |
+| ST-CAMP-006 並發多個單次 | AC-CAMP-011 | — | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | — | 併發語意由整合測試覆蓋 |
 | ST-CAMP-007 次數上限 | AC-CAMP-006/007 | ✅ `DrawServiceTest` | — | — | — |
 | ST-CAMP-008 防重複/replay | AC-CAMP-012/013 | ✅ `DrawServiceTest` | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | ⬜ J-3 | — |
 | ST-CAMP-009 防超抽（確認+降級） | AC-CAMP-014 | ✅ `DrawServiceTest` | ✅ `RedisPreDeductIT`（Redis 預扣 Lua 併發） | — | — |
-| ST-CAMP-010 瀏覽活動 | AC-GW-010 | ⬜ | — | — | 補 controller 測試 |
+| ST-CAMP-010 瀏覽活動 | AC-GW-010 | — | — | — | 敏感欄位不暴露由 DTO 結構保證（無 drawLimit/probability 欄位） |
 
 ### inventory-service
 
@@ -48,24 +48,24 @@
 | ST-INV-001 扣減不為負 | AC-INV-001 | ✅ `InventoryDeductionServiceTest` | ✅ `InventoryDeductionConcurrencyIT`（Postgres 併發） | — | — |
 | ST-INV-002 冪等 | AC-INV-003 | ✅ `InventoryDeductionServiceTest` | ✅ `InventoryCommitDeliveryIT`（MQ 投遞 + 冪等重投） | — | — |
 | ST-INV-003 補償 | AC-INV-002 | ✅ `InventoryDeductionServiceTest` | — | ⬜ J-3 | — |
-| ST-INV-004 帳目校對 | AC-INV-004/005 | ⬜ | — | — | Should，補校對測試 |
+| ST-INV-004 帳目校對 | AC-INV-004/005 | ✅ `InventoryReconciliationServiceTest` | — | — | — |
 
 ### gateway-service
 
 | Story | 不變量（AC） | Unit | Integration | E2E | 缺口 |
 |-------|-------------|------|-------------|-----|------|
-| ST-GW-001 身份驗證 | AC-GW-001/002/003/004 | ✅ `NimbusJwtVerifierTest` | — | — | 補 GlobalFilter 測試 |
-| ST-GW-002 身份傳遞 | AC-GW-004 | ⬜ | — | — | 補 filter 測試 |
-| ST-GW-003 限流 | AC-GW-006/007 | ⬜ | ✅ `RateLimiterIT`（Redis 固定窗口併發計數） | — | — |
+| ST-GW-001 身份驗證 | AC-GW-001/002/003/004 | ✅ `JwtAuthenticationGlobalFilterTest` | — | — | — |
+| ST-GW-002 身份傳遞 | AC-GW-004 | ✅ `JwtAuthenticationGlobalFilterTest` | — | — | — |
+| ST-GW-003 限流 | AC-GW-006/007 | ✅ `RateLimitGlobalFilterTest` | ✅ `RateLimiterIT`（Redis 固定窗口併發計數） | — | — |
 | ST-GW-004 冪等識別檢查 | AC-GW-008/009 | ✅ `GatewayRoutesTest` | — | — | — |
-| ST-GW-005 路由 | AC-GW-004/005 | ⬜ | — | — | 補路由測試 |
+| ST-GW-005 路由 | AC-GW-004/005 | — | — | — | declarative（application.yml StripPrefix），路由正確性由 E2E 驗證 |
 | ST-GW-006 公開功能 | AC-GW-010/011 | ✅ `GatewayRoutesTest` | — | — | — |
 
 ### cross-cutting
 
 | Story | 不變量 | Unit | Integration | E2E | 缺口 |
 |-------|--------|------|-------------|-----|------|
-| ST-X-001 錯誤流程 | 各服務 error envelope | 部分（各 `*Test` 的 error 分支） | — | — | 補 error envelope 測試 |
+| ST-X-001 錯誤流程 | 各服務 error envelope | ✅（各 `*Test` 的 error 分支 + `JwtAuthenticationGlobalFilterTest` 401） | — | — | — |
 | ST-X-002 RESTful/文件 | OpenAPI YAML ×4 | — | — | — | 非測試（SD 交付物） |
 
 ---

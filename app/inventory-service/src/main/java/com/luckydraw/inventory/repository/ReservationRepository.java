@@ -26,7 +26,7 @@ public interface ReservationRepository extends JpaRepository<ReservationEntity, 
     /**
      * 超時回收：RESERVED → REVERSED（單向終態）。
      */
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE ReservationEntity r SET r.status = com.luckydraw.contracts.inventory.api.model.ReservationStateEnum.REVERSED " +
             "WHERE r.drawRecordId = :drawRecordId AND r.status = com.luckydraw.contracts.inventory.api.model.ReservationStateEnum.RESERVED")
     int markReversed(@Param("drawRecordId") Long drawRecordId);
