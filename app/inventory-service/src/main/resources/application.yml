@@ -13,9 +13,31 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  cloud:
+    function:
+      definition: inventoryCommit;prizeStockConfigured
+    stream:
+      default:
+        content-type: application/json
+      bindings:
+        inventoryCommit-in-0:
+          destination: inventory-commit
+          group: inventory-service
+          consumer:
+            max-attempts: 3
+        prizeStockConfigured-in-0:
+          destination: prize-stock-configured
+          group: inventory-service
+          consumer:
+            max-attempts: 3
 
 server:
   port: 8083
+
+inventory:
+  reconciliation:
+    interval-ms: 300000
+    reservation-timeout-seconds: 300
 
 management:
   endpoints:

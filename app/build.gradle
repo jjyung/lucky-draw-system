@@ -35,4 +35,24 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
     }
+
+    // 測試分層（§12.4）：unit 與 integration 分開跑，dev loop 不拖慢。
+    // unit：`./gradlew test`（排除 @Tag("integration")，秒級）
+    // integration：`./gradlew integrationTest`（Testcontainers，CI / pre-merge 跑）
+    tasks.named('test') {
+        useJUnitPlatform {
+            excludeTags 'integration'
+        }
+    }
+
+    tasks.register('integrationTest', Test) {
+        description = 'Runs integration tests (Testcontainers).'
+        group = 'verification'
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags 'integration'
+        }
+        shouldRunAfter test
+    }
 }

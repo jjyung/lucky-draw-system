@@ -66,13 +66,14 @@ COMMENT ON COLUMN campaigns.updated_at IS '更新時間（由 app 層維護，�
 -- 機率總和 = 100% 為 app-level 驗證 (FR-CAMP-04)，無法用 CHECK 跨 row 表達
 -- -------------------------------------------------------------
 CREATE TABLE prizes (
-    id          BIGSERIAL    PRIMARY KEY,
-    campaign_id BIGINT       NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    name        VARCHAR(128) NOT NULL,
-    type        VARCHAR(16)  NOT NULL,   -- 'PRIZE' / 'THANK_YOU'
-    probability NUMERIC(5,2) NOT NULL,   -- 百分比 [0,100]
-    stock       INT          NOT NULL DEFAULT 0,  -- 初始數量；THANK_YOU 不適用（忽略）
-    sort_order  INT          NOT NULL DEFAULT 0,  -- 權重抽獎固定順序（ADR-004）
+    id             BIGSERIAL    PRIMARY KEY,
+    campaign_id    BIGINT       NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    name           VARCHAR(128) NOT NULL,
+    type           VARCHAR(16)  NOT NULL,   -- 'PRIZE' / 'THANK_YOU'
+    probability    NUMERIC(5,2) NOT NULL,   -- 百分比 [0,100]
+    stock          INT          NOT NULL DEFAULT 0,  -- 初始數量；THANK_YOU 不適用（忽略）
+    sort_order     INT          NOT NULL DEFAULT 0,  -- 權重抽獎固定順序（ADR-004）
+    config_version INT          NOT NULL DEFAULT 0,  -- 每獎品單調遞增的配置版本（prize-stock-configured 冪等/排序，ADR-010）
 
     CONSTRAINT chk_prizes_type        CHECK (type IN ('PRIZE', 'THANK_YOU')),
     CONSTRAINT chk_prizes_probability CHECK (probability >= 0 AND probability <= 100),
@@ -85,6 +86,7 @@ COMMENT ON COLUMN prizes.type        IS 'PRIZE（實體獎品）/ THANK_YOU（�
 COMMENT ON COLUMN prizes.probability IS '中獎機率 [0,100]；全體（含 THANK_YOU）總和 = 100%（app-level，FR-CAMP-04）';
 COMMENT ON COLUMN prizes.stock       IS '初始可發放數量（配置語意）；實際庫存真相在 inventory-service；THANK_YOU 存 0 且忽略';
 COMMENT ON COLUMN prizes.sort_order  IS '權重抽獎固定順序（累計機率區間，ADR-004）';
+COMMENT ON COLUMN prizes.config_version IS '每獎品單調遞增的配置版本；於獎品建立或 stock 修改時 +1，作為 prize-stock-configured 事件的冪等/排序鍵（ADR-010）';
 
 -- 抽獎權重區間排序 + 依活動取獎品清單（快取暖身/配置讀取）
 CREATE INDEX idx_prizes_campaign_sort ON prizes (campaign_id, sort_order);
@@ -143,6 +145,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | `probability` | `prizes.probability` | `NUMERIC(5,2)` | No | NOT NULL, `CHECK([0,100])` | — |
 | `stock`/`quantity` | `prizes.stock` | `INT` | No | NOT NULL, `CHECK(>= 0)`, DEFAULT 0 | — |
 | （新增，排序語意） | `prizes.sort_order` | `INT` | No | NOT NULL, DEFAULT 0 | `idx_prizes_campaign_sort(campaign_id, sort_order)` |
+| （新增，配置版本） | `prizes.config_version` | `INT` | No | NOT NULL, DEFAULT 0（每獎品單調遞增，ADR-010） | — |
 | `user_id` | `draw_records.user_id` | `BIGINT` | No | NOT NULL（邏輯引用，無 FK） | 複合 UNIQUE 前綴 `(user_id, campaign_id)` |
 | `campaign_id` | `draw_records.campaign_id` | `BIGINT` | No | NOT NULL, FK→`campaigns` | 複合 UNIQUE 前綴 + `idx_draw_records_campaign_created` |
 | `idempotency_key` | `draw_records.idempotency_key` | `VARCHAR(36)` | No | NOT NULL（UUID） | 複合 UNIQUE 尾前段 |
@@ -176,6 +179,8 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 **註記 — replay 快照（`payload_json`）**：`FR-CAMP-14` 要求重送時回傳「與首次**逐位元一致**」的結果。若只存 `result_type` + `prize_id`，重送時需重新組裝 response，但獎品名稱/機率可能已被 ADMIN 動態改過（`FR-CAMP-05`），無法保證逐位元一致。故以 `payload_json`（JSONB）儲存**首次回應的完整序列化快照**，replay 時直接回傳快照，不重新組裝。此欄位亦呼應 `risk-control.md` §3.2 的 INSERT 語意（`payload_json`）。
 
 **註記 — `updated_at` 維護**：`campaigns.updated_at` 由 app 層維護（Spring Data JPA `@LastModifiedDate`），不建 DB trigger，以利 dev SQLite/H2 共用。
+
+**註記 — `config_version` 與 `prize-stock-configured`（ADR-010）**：獎品 `stock`（= `quantity`）建立或修改時，campaign-service 發布 `prize-stock-configured`（`prizeId`, `campaignId`, `oldQuantity`, `newQuantity`, `configVersion`），inventory-service 以 `prize_id` upsert、以 `config_version` 去重/排序。`config_version` 每獎品單調遞增（建立 = 1，每次 stock 變更 +1）。為保 `prize_id` 穩定（inventory 的 upsert 鍵），`putCampaignPrizes` 採**就地 reconcile**（依 `sort_order` 位置對位更新既有獎品、保留 id；新增者建立、消失者刪除），**不再刪除重建**。`THANK_YOU` 獎品不發布該事件（不扣庫存）。
 
 ### 3.3 決策：`prize_id` 對銘謝惠顧為 NULL
 

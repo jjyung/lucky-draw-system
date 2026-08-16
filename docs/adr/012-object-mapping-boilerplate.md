@@ -5,7 +5,7 @@
 
 ## Context
 
-進入 Slice 1（auth-service）實作後，需要決定兩件影響所有 service 寫法的事：
+進入 Epic 1（auth-service）實作後，需要決定兩件影響所有 service 寫法的事：
 
 1. **entity ↔ DTO 映射**：實作中出現 `User → UserResourceDTO` 等映射。過去慣用手寫 setter 或 MapStruct。在 AI agent 代勞寫 boilerplate 的開發方式下，「省 setter」不再是選型理由，真正的決策維度是**維護性與正確性保證**。
 2. **getter/setter 與 boilerplate**：Lombok 常用於省去 getter/setter/建構子。但在 agent 代勞、且 DTO 已是 openapi-generator 生成（自帶 getter/setter）的前提下，Lombok 是否仍有價值需重新評估。

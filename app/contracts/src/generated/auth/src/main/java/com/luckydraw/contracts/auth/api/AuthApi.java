@@ -9,6 +9,7 @@ import com.luckydraw.contracts.auth.api.model.ErrorEnvelope;
 import com.luckydraw.contracts.auth.api.model.GetAuthJwksResponseDTO;
 import com.luckydraw.contracts.auth.api.model.PostAuthLoginRequestDTO;
 import com.luckydraw.contracts.auth.api.model.PostAuthLoginResponseDTO;
+import com.luckydraw.contracts.auth.api.model.PostAuthLogoutResponseDTO;
 import com.luckydraw.contracts.auth.api.model.PostAuthRefreshRequestDTO;
 import com.luckydraw.contracts.auth.api.model.PostAuthRefreshResponseDTO;
 import com.luckydraw.contracts.auth.api.model.PostAuthRegisterRequestDTO;
@@ -100,6 +101,47 @@ public interface AuthApi {
                 }
                 if (mediaType.isCompatibleWith(MediaType.valueOf("application/json"))) {
                     String exampleString = "{ \"code\" : \"A0201\", \"message\" : \"帳號或密碼錯誤\", \"data\" : null }";
+                    ApiUtil.setExampleResponse(request, "application/json", exampleString);
+                    break;
+                }
+                if (mediaType.isCompatibleWith(MediaType.valueOf("application/json"))) {
+                    String exampleString = "{ \"code\" : \"A0201\", \"message\" : \"帳號或密碼錯誤\", \"data\" : null }";
+                    ApiUtil.setExampleResponse(request, "application/json", exampleString);
+                    break;
+                }
+                if (mediaType.isCompatibleWith(MediaType.valueOf("application/json"))) {
+                    String exampleString = "{ \"code\" : \"A0201\", \"message\" : \"帳號或密碼錯誤\", \"data\" : null }";
+                    ApiUtil.setExampleResponse(request, "application/json", exampleString);
+                    break;
+                }
+            }
+        });
+        return new ResponseEntity<>(HttpStatus.NOT_IMPLEMENTED);
+
+    }
+
+
+    /**
+     * POST /auth/logout : 登出並撤銷憑證 [auth-tokens-003]
+     * 登出（撤銷）當前 bearer token（ADR-009 修訂：token 白名單）。將 token 的 jti 移出白名單， 之後該 token 即使簽章有效、未過期，也會因「不在白名單」而被 Gateway/各服務拒絕（REVOKED → &#x60;401&#x60;/&#x60;A0203&#x60;）。  - 需持有效 bearer token（受保護，&#x60;Authorization: Bearer &lt;token&gt;&#x60;）。 - 成功：&#x60;200&#x60;，回傳空 &#x60;data&#x60;。登出為**最佳努力撤銷**（冪等）：token 缺失/已過期/已登出 → 仍回 &#x60;200&#x60;。 - 僅撤銷「當下」這個 token（jti 維度），不影響同使用者的其他 token。  **Traceability:** &#x60;FR-AUTH&#x60;（登出/撤銷，ADR-009 修訂） 
+     *
+     * @return 登出成功（撤銷 token） (status code 200)
+     *         or 憑證無效/過期/已撤銷 → &#x60;A0203&#x60;（&#x60;A0202&#x60; 過期） (status code 401)
+     *         or 系統錯誤 → &#x60;B0000&#x60; (status code 500)
+     */
+    @RequestMapping(
+        method = RequestMethod.POST,
+        value = "/auth/logout",
+        produces = { "application/json" }
+    )
+    
+    default ResponseEntity<PostAuthLogoutResponseDTO> postAuthLogout(
+        
+    ) {
+        getRequest().ifPresent(request -> {
+            for (MediaType mediaType: MediaType.parseMediaTypes(request.getHeader("Accept"))) {
+                if (mediaType.isCompatibleWith(MediaType.valueOf("application/json"))) {
+                    String exampleString = "{ \"code\" : \"00000\", \"data\" : \"{}\", \"message\" : \"OK\" }";
                     ApiUtil.setExampleResponse(request, "application/json", exampleString);
                     break;
                 }

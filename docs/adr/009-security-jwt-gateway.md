@@ -2,6 +2,8 @@
 
 **Date:** 2026-08-13
 **Updated:** 2026-08-14 — public key 公開採 JWKS（`/.well-known/jwks.json`）；授權表移除個人抽獎記錄、活動管理改 resource-oriented 路徑 + role 授權（統一 `/api/v1` 前綴）。
+**Updated:** 2026-08-16 — Epic 3 收斂兩個 SD 開放點：① 下游複驗的公鑰**改由 Redis 共用狀態分發**（auth-service 啟動寫 `jwt:public-key`，各服務自 Redis 讀取，不 HTTP 回 auth-service）；② Gateway 驗證後**保留 `Authorization` 轉發下游**（供各服務獨立複驗，defense in depth），並同時注入 `X-User-Id`/`X-User-Roles` 作提示（原「移除 Authorization」與 §3「獨立複驗」衝突，此處以 §3 為準）。
+**Updated:** 2026-08-16 — **登出/撤銷：token 白名單**。登入簽發時將 `jti` 註冊進 Redis（扁平 key `auth:token:{jti}` TTL 對齊 token 有效期，＋ per-user 集合 `auth:sessions:{userId}` ZSET）；驗證語意改為「**簽章通過 且 jti 仍在白名單**（in Redis）才通過」（fail-closed）。登出 = `POST /auth/logout` 將 jti 移出白名單，之後該 token 回 `REVOKED → 401`。**同時登入數量控管**：per-user 集合 `ZCARD` 即同時登入數，上限可配置（`lucky-draw.auth.max-sessions`，預設 5），登入時超限**踢最舊（FIFO）**。採白名單（而非黑名單）的理由：改密碼/停權需撤銷該 user **所有** token 時，黑名單無從得知要放哪些 token，除非本就 keep 所有已發 token——那即是白名單。此決策**放寬「身份憑證主動撤銷 Won't」**（requirements.md §4），代價是 Redis 成為鑑別關鍵路徑（Redis 掛 → 全部 401），取代原「無狀態」的原始理由，以換取可撤銷與 session 控管。
 **Status:** Accepted
 
 ## Context
@@ -27,7 +29,7 @@
 
 - **api-gateway**（Spring Cloud Gateway）對所有 `/api/**` 請求：
   1. **驗證** JWT 簽章與過期時間；
-  2. 解出 claims，並以 **header 轉發**給下游 service：`X-User-Id`、`X-User-Roles`（同時移除原始 Authorization header 以降低下游洩漏風險）；
+  2. 解出 claims，並以 **header 轉發**給下游 service：`X-User-Id`、`X-User-Roles`。**原始 `Authorization` header 保留轉發下游**，供各服務獨立複驗（§3，defense in depth）；此為對早期「移除 Authorization」描述的修訂（若移除則下游無 token 可複驗，與 §3 衝突）。`X-User-Id`/`X-User-Roles` 僅為「Gateway 已驗證」的提示，非下游身分權威來源；
   3. 執行 **rate limiting**（Redis 計數器，見 ADR-003）；
   4. 依路由規則轉發到對應 service。
 - **公開 endpoint**（不需 token）：`POST /api/v1/auth/login`、`POST /api/v1/auth/register`、`GET /api/v1/campaigns`（活動列表）。
@@ -36,6 +38,7 @@
 
 - 每個 service 都整合 **Spring Security**，並**獨立驗證 JWT 簽章**（用 public key），**不信任 Gateway 轉發的 header**——把 header 視為「Gateway 已驗證」的附加資訊，但實際身份以自行驗證的 claims 為準。
 - 理由：若某個 service 被直接暴露（misconfigured route / 內網直連），沒有 Gateway 保護時，service 仍能自行鑑別請求。
+- **公鑰分發（Epic 3 起）**：auth-service 啟動時將 public JWK 寫入 Redis（key `jwt:public-key`）；各服務自 Redis 讀取公鑰（本地 in-memory 短 TTL 快取 + `kid` miss 刷新），**不 HTTP 回 auth-service 取 JWKS**。JWKS endpoint（`auth-keys-001`）仍公開（外部相容），但下游複驗不依賴它。驗證邏輯為 common module 的共用 `JwtVerifier`（RS256 + `exp` + `iss` → `sub`/`roles`）。
 
 ### 4. 授權（Authorization）
 

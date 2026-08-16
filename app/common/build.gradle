@@ -1,3 +1,24 @@
 plugins {
     id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:3.3.5"
+    }
+}
+
+dependencies {
+    // JWT 驗證（RS256）共用元件（ADR-009 §3，各服務獨立複驗）。
+    // api 暴露，讓 gateway / campaign-service 等下游服務直接取得 nimbus 型別。
+    api 'com.nimbusds:nimbus-jose-jwt:9.37.3'
+    // Redis 共用狀態：公鑰分發（jwt:public-key）由 RedisJwtKeySource 讀取（ADR-009 修訂）。
+    api 'org.springframework.boot:spring-boot-starter-data-redis'
+    // 解析 JWK JSON（kid/n/e）。
+    api 'com.fasterxml.jackson.core:jackson-databind'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

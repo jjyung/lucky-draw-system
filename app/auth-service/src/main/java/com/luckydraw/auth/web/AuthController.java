@@ -6,6 +6,7 @@ import com.luckydraw.auth.mapper.UserMapper;
 import com.luckydraw.auth.jwt.JwtKeyProvider;
 import com.luckydraw.auth.jwt.JwtService;
 import com.luckydraw.auth.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,13 +22,15 @@ public class AuthController implements AuthApi {
     private final JwtService jwtService;
     private final JwtKeyProvider keyProvider;
     private final UserMapper userMapper;
+    private final HttpServletRequest httpServletRequest;
 
     public AuthController(AuthService authService, JwtService jwtService, JwtKeyProvider keyProvider,
-                          UserMapper userMapper) {
+                          UserMapper userMapper, HttpServletRequest httpServletRequest) {
         this.authService = authService;
         this.jwtService = jwtService;
         this.keyProvider = keyProvider;
         this.userMapper = userMapper;
+        this.httpServletRequest = httpServletRequest;
     }
 
     @Override
@@ -71,5 +74,22 @@ public class AuthController implements AuthApi {
     public ResponseEntity<PostAuthRefreshResponseDTO> postAuthRefresh(PostAuthRefreshRequestDTO request) {
         // refresh 為 Should（FR-AUTH-04），非 POC 必須；Slice 1 不實作，回 501。
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+
+    @Override
+    public ResponseEntity<PostAuthLogoutResponseDTO> postAuthLogout() {
+        authService.logout(extractBearerToken(httpServletRequest.getHeader("Authorization")));
+        PostAuthLogoutResponseDTO response = new PostAuthLogoutResponseDTO()
+                .code("00000")
+                .message("OK")
+                .data(null);
+        return ResponseEntity.ok(response);
+    }
+
+    private String extractBearerToken(String header) {
+        if (header == null || !header.startsWith("Bearer ")) {
+            return null;
+        }
+        return header.substring(7);
     }
 }

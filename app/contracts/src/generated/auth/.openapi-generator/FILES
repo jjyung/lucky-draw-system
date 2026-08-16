@@ -9,6 +9,7 @@ src/main/java/com/luckydraw/contracts/auth/api/model/JwkResourceDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/JwksResourceDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthLoginRequestDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthLoginResponseDTO.java
+src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthLogoutResponseDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthRefreshRequestDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthRefreshResponseDTO.java
 src/main/java/com/luckydraw/contracts/auth/api/model/PostAuthRegisterRequestDTO.java

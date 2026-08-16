@@ -19,6 +19,9 @@ public final class ErrorCodes {
     public static final String MISSING_THANK_YOU = "A0305";
     public static final String DRAW_LIMIT_EXCEEDED = "A0306";
     public static final String IDEMPOTENCY_CONFLICT = "A0307";
+    public static final String CREDENTIAL_EXPIRED = "A0202";
+    public static final String CREDENTIAL_INVALID = "A0203";
+    public static final String FORBIDDEN = "A0400";
     public static final String STRUCTURAL_INVALID = "A0000";
     public static final String SYSTEM_ERROR = "B0000";
 
@@ -48,5 +51,17 @@ public final class ErrorCodes {
 
     public static ApiException idempotencyConflict() {
         return new ApiException(IDEMPOTENCY_CONFLICT, HttpStatus.CONFLICT, "冪等鍵衝突（併發重入）");
+    }
+
+    public static ApiException credentialExpired() {
+        return new ApiException(CREDENTIAL_EXPIRED, HttpStatus.UNAUTHORIZED, "憑證過期");
+    }
+
+    public static ApiException credentialInvalid() {
+        return new ApiException(CREDENTIAL_INVALID, HttpStatus.UNAUTHORIZED, "憑證無效");
+    }
+
+    public static ApiException forbidden() {
+        return new ApiException(FORBIDDEN, HttpStatus.FORBIDDEN, "權限不足");
     }
 }

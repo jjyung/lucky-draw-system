@@ -7,6 +7,7 @@
 | POST /api/v1/auth/register、/login | PUBLIC | 限流（A0500） | auth-service |
 | GET /api/v1/auth/.well-known/jwks.json | PUBLIC | 限流 | auth-service |
 | POST /api/v1/auth/refresh | bearerAuth | 驗證 + 限流 | auth-service |
+| POST /api/v1/auth/logout | bearerAuth | 驗證 + 限流（token 白名單撤銷） | auth-service |
 | GET /api/v1/campaigns、/campaigns/{id} | PUBLIC | 限流 | campaign-service |
 | POST/PUT/PATCH /api/v1/campaigns…、prizes | bearerAuth（ADMIN） | 驗證 + 限流 | campaign-service |
 | POST /api/v1/campaigns/{id}/draw | bearerAuth（USER） | 驗證 + 限流 + **Idempotency-Key 檢查**（缺→A0501） | campaign-service |

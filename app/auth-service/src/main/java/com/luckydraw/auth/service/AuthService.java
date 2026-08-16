@@ -6,6 +6,7 @@ import com.luckydraw.auth.repository.RoleRepository;
 import com.luckydraw.auth.repository.UserRepository;
 import com.luckydraw.auth.error.ErrorCodes;
 import com.luckydraw.auth.jwt.JwtService;
+import com.luckydraw.common.security.TokenRegistry;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import java.util.List;
  * - 密碼以不可逆 BCrypt 雜湊儲存，任何環節不得明文（FR-AUTH-06）
  * - username/email 唯一，重複 → 409（AC-AUTH-002）
  * - 登入失敗「帳號不存在」與「密碼錯誤」回同一 401/A0201（AC-AUTH-006）
+ * - 登入簽發 → jti 註冊進 token 白名單；登出 → 撤銷（ADR-009 修訂）
  */
 @Service
 public class AuthService {
@@ -26,15 +28,18 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final TokenRegistry tokenRegistry;
 
     public AuthService(UserRepository userRepository,
                        RoleRepository roleRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       TokenRegistry tokenRegistry) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.tokenRegistry = tokenRegistry;
     }
 
     /**
@@ -78,6 +83,27 @@ public class AuthService {
         List<String> roles = user.getRoles().stream()
                 .map(RoleEntity::getCode)
                 .toList();
-        return jwtService.issueAccessToken(user.getId(), roles);
+        String token = jwtService.issueAccessToken(user.getId(), roles);
+        // 登入簽發 → 註冊進白名單（ADR-009 修訂：in Redis && 驗章才通過；per-user 集合，超限踢最舊）
+        String jti = jwtService.jtiOf(token);
+        if (jti != null) {
+            tokenRegistry.register(String.valueOf(user.getId()), jti, jwtService.ttlSeconds());
+        }
+        return token;
+    }
+
+    /**
+     * 登出（撤銷）：將 token 的 jti 移出白名單，之後該 token 驗證回 REVOKED。
+     * 最佳努力：token 缺失/格式異常 → 無動作（冪等）。
+     */
+    public void logout(String token) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+        String jti = jwtService.jtiOf(token);
+        String userId = jwtService.subjectOf(token);
+        if (jti != null && userId != null) {
+            tokenRegistry.revoke(userId, jti);
+        }
     }
 }

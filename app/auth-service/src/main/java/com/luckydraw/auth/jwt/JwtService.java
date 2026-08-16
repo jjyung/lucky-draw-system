@@ -77,4 +77,33 @@ public class JwtService {
         jwks.addKeysItem(jwk);
         return jwks;
     }
+
+    /**
+     * 存取憑證有效秒數（對齊 whitelist TTL，ADR-009 修訂）。
+     */
+    public long ttlSeconds() {
+        return keyProvider.getTtlSeconds();
+    }
+
+    /**
+     * 解出 token 的 jti（token 白名單鍵，ADR-009 修訂）。格式異常 → null（登出為最佳努力撤銷）。
+     */
+    public String jtiOf(String token) {
+        try {
+            return SignedJWT.parse(token).getJWTClaimsSet().getJWTID();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 解出 token 的 sub（userId；登出時定位 per-user session 集合）。格式異常 → null。
+     */
+    public String subjectOf(String token) {
+        try {
+            return SignedJWT.parse(token).getJWTClaimsSet().getSubject();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }

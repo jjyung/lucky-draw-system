@@ -157,17 +157,17 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 
 ---
 
-## 7. Slice、驗證與回寫
+## 7. 交付切分、驗證與回寫
 
-### 7.1 切成可獨立 review 的 slice
+### 7.1 切成可獨立 review 的小單位（epic → story → task）
 
 不要一次產出巨大變更（Coinbase 教訓：單一 agent 一次生成 19 檔案、14,000 行，無法有效 review）。做法：
 
-1. 先產出 **plan**（依 service / component 拆解），等待確認。
+1. 先產出 **plan**（依 service / component 拆解成 epic → story），等待確認。
 2. 再建立 **scaffold**：route、permission、migration、test skeleton、validation gates。
-3. 最後由 worker 依 slice 實作，開出較小的 draft PR。
+3. 最後由 worker 依 story 實作，開出較小的 draft PR。
 
-> 每個 slice 都有自己的 requirement IDs、API IDs、tests、owner 和 reviewer，審查才跟得上產出速度。
+> 每個 story 都有自己的 requirement IDs、API IDs、tests、owner 和 reviewer，審查才跟得上產出速度。
 
 ### 7.2 分層驗證
 
@@ -206,7 +206,7 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 1. **先 evidence，再規格**：把 observed / inferred / unknown 分開，推測不成為決策。
 2. **角色分層**：SA 定語意 → SD 定契約 → 後端實作 → QA 驗證，各層不越界。
 3. **契約可追蹤**：每個操作都能回指 requirement、business rule、API、data effect、verification。
-4. **切小 slice**：小 PR、獨立 review、每段可驗證。
+4. **切小交付單位**：epic 拆 story、story 拆 task；小 PR、獨立 review、每段可驗證。
 5. **變更回寫**：改對層次，不只在 code 裡改。
 6. **AI 加速翻譯，人負責決策**：business meaning、technical contract、verification conditions 由人把關。
 
@@ -304,6 +304,41 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 4. **AI 生成測試三坑**（審查用）：鏡射實作、重述錯誤邏輯、全 happy path。以三問過篩（換一種正確寫法還過嗎？需求誤解抓得到嗎？唯一會紅的理由是「有人改實作」嗎？）。
 5. **TDD 節奏**：Red→Green→Refactor，小步快跑；compile suite 秒級、commit suite ≤10 分鐘。
 
+### 12.4 測試分層與整合測試 (Test Layers & Integration)
+
+> 三層測試各自保護不同東西。**不要用整合測試去驗證單元測試就能驗證的事**（反過來會拖慢 dev loop）。判斷準則：
+
+| 情境 | 層 | 驗證手段 | 執行時機 |
+|------|----|----------|----------|
+| 業務規則／不變量（fake / H2 可驗證） | **unit**（TDD） | JUnit + 真邏輯 + classical stub | `./gradlew test`（秒級，每次） |
+| DB 併發/鎖語意（條件更新、UNIQUE 競態） | **integration** | PostgreSQL Testcontainers | `./gradlew integrationTest`（CI / pre-merge） |
+| Redis 原子性（Lua script） | **integration** | Redis Testcontainers | 同上 |
+| 跨服務事件投遞（at-least-once、冪等） | **integration** | RabbitMQ Testcontainers（極精選） | 同上 |
+| 完整使用者旅程 | **e2e** | `docs/stories/journeys.md` 的 J-1/J-2/J-3 | 功能全綠後 SA/QA |
+
+- **整合測試只測「單元測試結構上無法驗證」的跨邊界不變量**，集合很小（約 5–8 個），不是每個 API 都測。H2 只做功能驗證，**不得作為防超抽／鎖語意的正確性證據**（ADR-002）。
+- **執行成本在容器啟動，不在寫測試**（AI 已讓「寫」變快，「執行」不會變快）。省時間的正解：
+  1. **singleton 容器**：Testcontainers `@Container static`，整套測試共用一個 Postgres/Redis/RabbitMQ，只啟動一次。
+  2. **`@Tag("integration")` + 獨立 Gradle task**：dev loop 的 `./gradlew test` 只跑 unit（守住 §12.3「commit suite ≤10 分鐘」）；整合測試在 CI / pre-merge 跑，不拖慢開發節奏。
+- **補整合測試的時間點**：**跟著 epic 收尾補**（該 epic 引入的跨邊界不變量），不要全部做完再一次補（bug 已擴散、修起來貴）。
+
+### 12.5 測試狀態矩陣與自驗證 (Test Status Matrix & Self-Verification)
+
+> 以 **story 出發**管理測試完成狀態（unit / integration / e2e 三層），落於 `docs/testing/test-matrix.md`：
+
+| Story | 不變量（AC） | Unit | Integration | E2E | 缺口 |
+|-------|-------------|------|-------------|-----|------|
+| ST-INV-001 | AC-INV-001 | ✅ `InventoryDeductionServiceTest` | ⬜ Postgres 並發扣減 | — | 補 Postgres |
+| ST-AUTH-002 | AC-AUTH-004 | ✅ `AuthServiceTest` | — | ⬜ J-2 | — |
+
+- 每格 ✅/⬜ 且標**驗證手段**（unit 掛測試類名、integration 掛容器+情境、e2e 掛 journey ID）。
+- 測試狀態矩陣只是**索引**，狀態值由 **CI 結果推導**，不是 PG 手動打勾。
+
+**自驗證機制（避免「PG 自說」）**——三層：
+1. **機器執行**：測試過不過由 CI runner 判定，綠 = 機器驗證。
+2. **獨立驗證者**：dev-flow 的 **verifier** 獨立跑 build/test（對應「SA/QA 不該只信 PG」）。
+3. **測「不變量」不測「覆蓋率」**：以 §12.3 三問過濾「鏡射實作」；整合測試必須「真開併發 + 真斷言不變量」，不是斷言「呼叫了某 method」。整合測試本身就是「PG 自說」的最後一道防線——單元測試再怎麼自己打勾，也無法證明「併發下庫存不為負」，只有真 Postgres 併發測試能證明。
+
 ---
 
 ## 13. Rules 索引 (Rules Index)
@@ -319,3 +354,18 @@ SD 還需決定：primary key、foreign key、unique constraint、normalization/
 | Unit Testing | [`docs/rules/unit-testing.md`](docs/rules/unit-testing.md) | 保護不變量、classical-first mock、AI 三坑 |
 | OpenAPI Contract | [`docs/rules/openapi-contract.md`](docs/rules/openapi-contract.md) | API ID / operationId / Model 命名 |
 | REST API | [`docs/rules/rest-api.md`](docs/rules/rest-api.md) | REST 命名/方法/envelope；POC 不分頁 |
+
+---
+
+## 14. 溝通詞彙 (Glossary)
+
+> 人類與 agent 共用的工作單位詞彙，避免混用。**動筆前先對齊用詞**（與 §10 同理）。四者是不同軸，不可互換：
+
+| 詞 | 軸 | 語意 | 本 repo 對應 |
+|----|----|------|--------------|
+| **epic** | 交付單位 | 一次可獨立 review / 合併的**大塊交付**（內含多個 story） | 本專案交付切分（Epic 0 ~ 3…，原 Slice 改名） |
+| **story** | 需求單位 | 角色 × 價值的「為什麼」（user story） | `docs/stories/` 的 `ST-*` |
+| **task** | 工作項 | 更細的可執行工作（小時~天級） | todo 列表、實作步驟 |
+| **phase** | 流程階段 | 契約優先流程的**階段**（非交付單位） | dev-flow 的 Phase 0~3（契約 → 程式 → 驗證） |
+
+> 交付階層：**epic > story > task**（依大小）；`phase` 是「流程走到哪」，屬**不同軸**。易混點：`phase` =「流程走到哪」、`epic` =「這次交付哪一大塊」、`story` =「為誰、為什麼」、`task` =「下一步做什麼」。**「sprint」是時間盒（timebox），不是工作單位**，本 repo 不用。

@@ -126,6 +126,7 @@
 | `auth-users-001` | POST | `/api/v1/auth/register` | PUBLIC | 使用者註冊 | `postAuthRegister` |
 | `auth-tokens-001` | POST | `/api/v1/auth/login` | PUBLIC | 登入並簽發憑證 | `postAuthLogin` |
 | `auth-tokens-002` | POST | `/api/v1/auth/refresh` | USER（Should） | 刷新存取憑證 | `postAuthRefresh` |
+| `auth-tokens-003` | POST | `/api/v1/auth/logout` | USER | 登出並撤銷憑證（token 白名單移除 jti） | `postAuthLogout` |
 | `auth-keys-001` | GET | `/api/v1/auth/.well-known/jwks.json` | PUBLIC | 取得驗證公鑰（JWKS） | `getAuthJwks` |
 | `campaign-campaigns-001` | GET | `/api/v1/campaigns` | PUBLIC | 活動列表（不含管理欄位） | `getCampaigns` |
 | `campaign-campaigns-002` | GET | `/api/v1/campaigns/{campaignId}` | PUBLIC | 活動詳情 | `getCampaignById` |

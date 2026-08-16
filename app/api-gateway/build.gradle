@@ -5,8 +5,11 @@ plugins {
 }
 
 dependencies {
+    implementation project(':common')
     implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // 限流（ADR-003）＋ JWT 公鑰分發（common 的 RedisJwtKeySource 需 StringRedisTemplate）
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

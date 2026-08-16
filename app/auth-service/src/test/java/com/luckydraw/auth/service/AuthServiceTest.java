@@ -7,6 +7,8 @@ import com.luckydraw.auth.repository.UserRepository;
 import com.luckydraw.auth.error.ApiException;
 import com.luckydraw.auth.jwt.JwtKeyProvider;
 import com.luckydraw.auth.jwt.JwtService;
+import com.luckydraw.common.security.TokenRegistry;
+import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,11 +17,14 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
  * AuthService 的行為測試（單元測試規約：保護不變量，不 mock DB）。
- * 不變量來源：SA auth UC-1/UC-2 的 business rule 與 AC-AUTH-001/002/006。
+ * 不變量來源：SA auth UC-1/UC-2 的 business rule 與 AC-AUTH-001/002/006、token 白名單（ADR-009 修訂）。
  */
 @DataJpaTest
 class AuthServiceTest {
@@ -32,6 +37,7 @@ class AuthServiceTest {
 
     private AuthService authService;
     private PasswordEncoder passwordEncoder;
+    private FakeTokenRegistry tokenRegistry;
 
     @BeforeEach
     void setUp() {
@@ -39,7 +45,8 @@ class AuthServiceTest {
         JwtKeyProvider keyProvider = new JwtKeyProvider();
         keyProvider.init();
         JwtService jwtService = new JwtService(keyProvider);
-        authService = new AuthService(userRepository, roleRepository, passwordEncoder, jwtService);
+        tokenRegistry = new FakeTokenRegistry();
+        authService = new AuthService(userRepository, roleRepository, passwordEncoder, jwtService, tokenRegistry);
 
         // @DataJpaTest 會執行 Flyway migration（含 V2 seed：ROLE_USER/ROLE_ADMIN），
         // 每個測試方法獨立事務並 rollback，不需手動清資料。此處僅驗證 seed 就緒。
@@ -141,5 +148,39 @@ class AuthServiceTest {
         assertThat(unknown.getCode()).isEqualTo(wrongPwd.getCode()).isEqualTo("A0201");
         assertThat(unknown.getStatus()).isEqualTo(wrongPwd.getStatus());
         assertThat(unknown.getMessage()).isEqualTo(wrongPwd.getMessage());
+    }
+
+    @Test
+    @DisplayName("登入註冊 jti 進白名單；登出後撤銷（ADR-009 修訂）")
+    void login_registersJti_logout_revokes() throws Exception {
+        authService.register("alice", "alice@example.com", "S3cure!Pass");
+        String token = authService.login("alice", "S3cure!Pass");
+
+        String jti = SignedJWT.parse(token).getJWTClaimsSet().getJWTID();
+        assertThat(jti).isNotBlank();
+        assertThat(tokenRegistry.isActive(jti)).isTrue();
+
+        authService.logout(token);
+        assertThat(tokenRegistry.isActive(jti)).isFalse();
+    }
+
+    /** in-memory fake（classical）：active 集合內的 jti 視為在白名單。 */
+    static class FakeTokenRegistry implements TokenRegistry {
+        private final Set<String> active = new HashSet<>();
+
+        @Override
+        public void register(String userId, String jti, long ttlSeconds) {
+            active.add(jti);
+        }
+
+        @Override
+        public void revoke(String userId, String jti) {
+            active.remove(jti);
+        }
+
+        @Override
+        public boolean isActive(String jti) {
+            return active.contains(jti);
+        }
     }
 }

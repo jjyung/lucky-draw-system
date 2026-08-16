@@ -39,6 +39,9 @@ public class PrizeEntity {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
 
+    @Column(name = "config_version", nullable = false)
+    private Integer configVersion = 0;
+
     protected PrizeEntity() {
     }
 
@@ -77,5 +80,23 @@ public class PrizeEntity {
 
     public Integer getSortOrder() {
         return sortOrder;
+    }
+
+    public Integer getConfigVersion() {
+        return configVersion;
+    }
+
+    public void setConfigVersion(Integer configVersion) {
+        this.configVersion = configVersion;
+    }
+
+    /**
+     * 就地更新（供 reconcile，保留 id 與 config_version 語意，ADR-010）。
+     */
+    public void update(String name, Type type, BigDecimal probability, Integer stock) {
+        this.name = name;
+        this.type = type;
+        this.probability = probability;
+        this.stock = stock;
     }
 }
