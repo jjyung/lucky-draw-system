@@ -46,7 +46,7 @@
 | Story | 不變量（AC） | Unit | Integration | E2E | 缺口 |
 |-------|-------------|------|-------------|-----|------|
 | ST-INV-001 扣減不為負 | AC-INV-001 | ✅ `InventoryDeductionServiceTest` | ✅ `InventoryDeductionConcurrencyIT`（Postgres 併發） | — | — |
-| ST-INV-002 冪等 | AC-INV-003 | ✅ `InventoryDeductionServiceTest` | ⬜ MQ at-least-once 重投 | — | 補 MQ |
+| ST-INV-002 冪等 | AC-INV-003 | ✅ `InventoryDeductionServiceTest` | ✅ `InventoryCommitDeliveryIT`（MQ 投遞 + 冪等重投） | — | — |
 | ST-INV-003 補償 | AC-INV-002 | ✅ `InventoryDeductionServiceTest` | — | ⬜ J-3 | — |
 | ST-INV-004 帳目校對 | AC-INV-004/005 | ⬜ | — | — | Should，補校對測試 |
 
@@ -72,5 +72,5 @@
 
 ## 整合測試缺口優先序（§12.4：只測單元測不到的跨邊界不變量）
 
-1. ⬜ **MQ：ST-CAMP-003 + ST-INV-002**（`prize-stock-configured` / `inventory-commit` at-least-once + 冪等）
-2. ⬜ **Redis：ST-GW-003 限流**（gateway 固定窗口計數）
+1. ⬜ **Redis：ST-GW-003 限流**（gateway 固定窗口計數）
+2. ⬜ **MQ：ST-CAMP-003 `prize-stock-configured` 投遞**（與 `inventory-commit` 同 binder 機制，風險低）
