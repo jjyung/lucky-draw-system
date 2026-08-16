@@ -32,7 +32,7 @@
 |-------|-------------|------|-------------|-----|------|
 | ST-CAMP-001 建立/編輯活動 | AC-CAMP-005 | ✅ `CampaignStateMachineTest` | — | ⬜ J-1 | — |
 | ST-CAMP-002 配置獎品機率 | AC-CAMP-001/002/003 | ✅ `PrizeServiceValidationTest` | — | — | — |
-| ST-CAMP-003 動態修改獎品 | UC-2 intent | ✅ `PrizeServiceReconcileTest` | ⬜ MQ（`prize-stock-configured` 投遞） | ⬜ J-1 | 補 MQ |
+| ST-CAMP-003 動態修改獎品 | UC-2 intent | ✅ `PrizeServiceReconcileTest` | ✅ `InventoryEventDeliveryIT`（`prize-stock-configured` 投遞） | ⬜ J-1 | — |
 | ST-CAMP-004 單次抽獎 | AC-CAMP-004/014/016 | ✅ `DrawServiceTest` | — | ⬜ J-2 | — |
 | ST-CAMP-005 批次抽獎 | AC-CAMP-008/009/010 | ✅ `DrawServiceTest` | — | — | — |
 | ST-CAMP-006 並發多個單次 | AC-CAMP-011 | ⬜ | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | — | — |
@@ -72,4 +72,4 @@
 
 ## 整合測試缺口優先序（§12.4：只測單元測不到的跨邊界不變量）
 
-1. ⬜ **MQ：ST-CAMP-003 `prize-stock-configured` 投遞**（與 `inventory-commit` 同 binder 機制，風險低）
+> 跨邊界整合測試已全數覆蓋（Postgres 防超抽/冪等併發、Redis 預扣/踢最舊/限流、MQ 雙事件投遞）。剩餘 e2e（J-1/J-2/J-3）於功能全綠後由 SA/QA 執行。
