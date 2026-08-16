@@ -45,7 +45,7 @@ public class DrawRecordEntity {
     @JoinColumn(name = "prize_id")
     private PrizeEntity prize;
 
-    @Column(name = "payload_json", nullable = false, columnDefinition = "JSON")
+    @Column(name = "payload_json", nullable = false, columnDefinition = "TEXT")
     private String payloadJson;
 
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")

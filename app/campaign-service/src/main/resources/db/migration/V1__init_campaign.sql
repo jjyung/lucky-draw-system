@@ -48,7 +48,7 @@ CREATE TABLE draw_records (
     seq             INT          NOT NULL DEFAULT 0,
     result_type     VARCHAR(16)  NOT NULL,
     prize_id        BIGINT       NULL REFERENCES prizes(id) ON DELETE RESTRICT,
-    payload_json    JSON         NOT NULL,
+    payload_json    TEXT         NOT NULL,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key, seq),

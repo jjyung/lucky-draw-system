@@ -104,7 +104,7 @@ CREATE TABLE draw_records (
     seq             INT          NOT NULL DEFAULT 0,  -- 批內序號：單次=0；批次=0..N-1
     result_type     VARCHAR(16)  NOT NULL,  -- 'WIN' / 'THANK_YOU'
     prize_id        BIGINT       NULL     REFERENCES prizes(id)   ON DELETE RESTRICT,  -- THANK_YOU 時 NULL
-    payload_json    JSONB        NOT NULL,  -- replay 快照：本次回應之完整序列化結果（FR-CAMP-14 逐位元一致）
+    payload_json    TEXT         NOT NULL,  -- replay 快照：本次回應之完整序列化 JSON 字串（FR-CAMP-14 逐位元一致；TEXT 保原字串，避免 JSONB 正規化）
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_draw_records_idem       UNIQUE (user_id, campaign_id, idempotency_key, seq),
@@ -152,7 +152,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | `seq` | `draw_records.seq` | `INT` | No | NOT NULL, DEFAULT 0（單次=0；批次=0..N-1） | 複合 UNIQUE 尾段 |
 | `result_type` | `draw_records.result_type` | `VARCHAR(16)` | No | NOT NULL, `CHECK(WIN/THANK_YOU)` | — |
 | `prize_id` | `draw_records.prize_id` | `BIGINT` | **Yes**（THANK_YOU） | FK→`prizes`（RESTRICT）, `CHECK` 與 result_type 對齊 | — |
-| （新增，replay 快照） | `draw_records.payload_json` | `JSONB` | No | NOT NULL | — |
+| （新增，replay 快照） | `draw_records.payload_json` | `TEXT` | No | NOT NULL | — |
 | 抽獎次數（派生計數） | （**不落 DB 欄位**） | — | — | — | 見 §3.2 註記 |
 | （新增） | `draw_records.created_at` | `TIMESTAMPTZ` | No | DEFAULT now() | `idx_draw_records_campaign_created` |
 
@@ -176,7 +176,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 
 **註記 — 抽獎次數（派生計數）**：SA §5.3 明確「抽獎次數是『使用者 × 活動』維度的派生計數，不是單一抽獎記錄的欄位」。runtime 由 Redis 計數器 `draw_count:{userId}:{campaignId}` 承載（ADR-003），`draw_records` 是其**稽核真相**（每筆成功抽獎 +1，批次 +N）。因此 Campaign DB **不建立**獨立的 draw_count 表。
 
-**註記 — replay 快照（`payload_json`）**：`FR-CAMP-14` 要求重送時回傳「與首次**逐位元一致**」的結果。若只存 `result_type` + `prize_id`，重送時需重新組裝 response，但獎品名稱/機率可能已被 ADMIN 動態改過（`FR-CAMP-05`），無法保證逐位元一致。故以 `payload_json`（JSONB）儲存**首次回應的完整序列化快照**，replay 時直接回傳快照，不重新組裝。此欄位亦呼應 `risk-control.md` §3.2 的 INSERT 語意（`payload_json`）。
+**註記 — replay 快照（`payload_json`）**：`FR-CAMP-14` 要求重送時回傳「與首次**逐位元一致**」的結果。若只存 `result_type` + `prize_id`，重送時需重新組裝 response，但獎品名稱/機率可能已被 ADMIN 動態改過（`FR-CAMP-05`），無法保證逐位元一致。故以 `payload_json` 儲存**首次回應的完整序列化快照**，replay 時直接回傳快照，不重新組裝。此欄位採 **`TEXT`**（非 JSONB）：快照是「序列化 JSON 字串」，TEXT 原樣保存以保逐位元一致（JSONB 會正規化 key 順序/空白）；且 Hibernate 以 `String` 欄位綁定，TEXT 可同時在 H2 與 PostgreSQL 正確運作（`JSON`/`JSONB` 需額外 cast）。此欄位亦呼應 `risk-control.md` §3.2 的 INSERT 語意（`payload_json`）。
 
 **註記 — `updated_at` 維護**：`campaigns.updated_at` 由 app 層維護（Spring Data JPA `@LastModifiedDate`），不建 DB trigger，以利 dev SQLite/H2 共用。
 
@@ -199,7 +199,7 @@ CREATE INDEX idx_draw_records_campaign_created ON draw_records (campaign_id, cre
 | `status`/`type`/`result_type` | `VARCHAR(n)` + CHECK | 同左（CHECK 由 SQLite 強制） | 同左 |
 | `probability` | `NUMERIC(5,2)` | `NUMERIC`（近似 REAL，浮點誤差） | `NUMERIC(5,2)` |
 | `start_time`/`end_time` | `TIMESTAMPTZ` | `TEXT`（ISO-8601） | `TIMESTAMP WITH TIME ZONE` |
-| `payload_json` | `JSONB` | `TEXT`（存 JSON 字串，無 JSON 型別） | `JSON` / `CLOB` |
+| `payload_json` | `TEXT`（存 JSON 字串；保原字串供逐位元 replay，prod 若需 JSON 查詢再改 JSONB） | `TEXT`（存 JSON 字串，無 JSON 型別） | `TEXT` |
 | `created_at DESC` index | 支援 | 支援 | 支援 |
 
 > ⚠️ `probability` 在 SQLite 的 `NUMERIC` 近似可能造成「總和 100%」驗證（`FR-CAMP-04`）的浮點容差需要更寬容的 dev 參數；prod 用 `NUMERIC(5,2)` 精確十進位，無此問題。

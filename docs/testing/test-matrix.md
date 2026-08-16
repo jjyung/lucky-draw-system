@@ -35,9 +35,9 @@
 | ST-CAMP-003 動態修改獎品 | UC-2 intent | ✅ `PrizeServiceReconcileTest` | ⬜ MQ（`prize-stock-configured` 投遞） | ⬜ J-1 | 補 MQ |
 | ST-CAMP-004 單次抽獎 | AC-CAMP-004/014/016 | ✅ `DrawServiceTest` | — | ⬜ J-2 | — |
 | ST-CAMP-005 批次抽獎 | AC-CAMP-008/009/010 | ✅ `DrawServiceTest` | — | — | — |
-| ST-CAMP-006 並發多個單次 | AC-CAMP-011 | ⬜ | ⬜ Postgres 併發撞 UNIQUE | — | 補 Postgres |
+| ST-CAMP-006 並發多個單次 | AC-CAMP-011 | ⬜ | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | — | — |
 | ST-CAMP-007 次數上限 | AC-CAMP-006/007 | ✅ `DrawServiceTest` | — | — | — |
-| ST-CAMP-008 防重複/replay | AC-CAMP-012/013 | ✅ `DrawServiceTest` | ⬜ Postgres 併發撞 UNIQUE | ⬜ J-3 | 補 Postgres |
+| ST-CAMP-008 防重複/replay | AC-CAMP-012/013 | ✅ `DrawServiceTest` | ✅ `DrawIdempotencyConcurrencyIT`（Postgres 併發撞 UNIQUE） | ⬜ J-3 | — |
 | ST-CAMP-009 防超抽（確認+降級） | AC-CAMP-014 | ✅ `DrawServiceTest` | ⬜ Redis 預扣 Lua | — | 補 Redis |
 | ST-CAMP-010 瀏覽活動 | AC-GW-010 | ⬜ | — | — | 補 controller 測試 |
 
@@ -72,7 +72,6 @@
 
 ## 整合測試缺口優先序（§12.4：只測單元測不到的跨邊界不變量）
 
-1. ⬜ **Postgres：ST-CAMP-006/008 併發撞 UNIQUE**（campaign 冪等/replay 的併發正確性）
-2. ⬜ **Redis：ST-CAMP-009 預扣 Lua**（campaign 抽獎熱點預扣）
-3. ⬜ **MQ：ST-CAMP-003 + ST-INV-002**（`prize-stock-configured` / `inventory-commit` at-least-once + 冪等）
-4. ⬜ **Redis：ST-GW-003 限流**（gateway 固定窗口計數）
+1. ⬜ **Redis：ST-CAMP-009 預扣 Lua**（campaign 抽獎熱點預扣）
+2. ⬜ **MQ：ST-CAMP-003 + ST-INV-002**（`prize-stock-configured` / `inventory-commit` at-least-once + 冪等）
+3. ⬜ **Redis：ST-GW-003 限流**（gateway 固定窗口計數）

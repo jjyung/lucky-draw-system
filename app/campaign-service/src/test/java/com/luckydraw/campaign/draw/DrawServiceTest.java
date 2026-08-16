@@ -15,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -39,6 +40,9 @@ class DrawServiceTest {
     @Autowired
     private DrawRecordRepository drawRecordRepository;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private ObjectMapper objectMapper;
     private DrawResultMapper drawResultMapper;
     private FakeRedis redis;
@@ -52,7 +56,7 @@ class DrawServiceTest {
         DrawEventPublisher publisher = record -> {
         };
         drawService = new DrawService(campaignRepository, drawRecordRepository,
-                redis, drawResultMapper, objectMapper, publisher);
+                redis, drawResultMapper, objectMapper, publisher, transactionManager);
     }
 
     private CampaignEntity activeCampaign(int drawLimit) {

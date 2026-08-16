@@ -11,8 +11,10 @@ import com.luckydraw.campaign.repository.DrawRecordRepository;
 import com.luckydraw.contracts.campaign.api.model.BatchDrawResourceDTO;
 import com.luckydraw.contracts.campaign.api.model.DrawResultResourceDTO;
 import com.luckydraw.contracts.campaign.api.model.PostCampaignDrawResponseDTOData;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,22 +40,24 @@ public class DrawService {
     private final DrawResultMapper drawResultMapper;
     private final ObjectMapper objectMapper;
     private final DrawEventPublisher eventPublisher;
+    private final TransactionTemplate txTemplate;
 
     public DrawService(CampaignRepository campaignRepository,
                        DrawRecordRepository drawRecordRepository,
                        DrawRedisClient redisClient,
                        DrawResultMapper drawResultMapper,
                        ObjectMapper objectMapper,
-                       DrawEventPublisher eventPublisher) {
+                       DrawEventPublisher eventPublisher,
+                       PlatformTransactionManager transactionManager) {
         this.campaignRepository = campaignRepository;
         this.drawRecordRepository = drawRecordRepository;
         this.redisClient = redisClient;
         this.drawResultMapper = drawResultMapper;
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
+        this.txTemplate = new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public PostCampaignDrawResponseDTOData draw(Long userId, Long campaignId, String idempotencyKey, int count) {
         // 1. ACTIVE 檢查
         CampaignEntity campaign = campaignRepository.findById(campaignId)
@@ -67,19 +71,40 @@ public class DrawService {
             throw ErrorCodes.idempotencyConflict();
         }
 
-        try {
-            // 3. replay 查詢（整批）
-            List<DrawRecordEntity> existing = drawRecordRepository
-                    .findByUserIdAndCampaignIdAndIdempotencyKeyOrderBySeqAsc(
-                            userId, campaignId, idempotencyKey);
-            if (!existing.isEmpty()) {
-                return replay(existing, count);
-            }
-            return executeDraw(userId, campaign, idempotencyKey, count);
-        } finally {
-            redisClient.unlock(userId, campaignId, idempotencyKey);
+    try {
+        // 3. replay 查詢（整批）
+        List<DrawRecordEntity> existing = drawRecordRepository
+                .findByUserIdAndCampaignIdAndIdempotencyKeyOrderBySeqAsc(
+                        userId, campaignId, idempotencyKey);
+        if (!existing.isEmpty()) {
+            return replay(existing, count);
         }
+        // 4. 落庫在獨立交易執行（draw() 不掛 @Transactional，無外層交易時此處開新交易；
+        //    撞 UNIQUE 時該交易獨立 rollback、不污染外層，catch 可於新交易重查）
+        return txTemplate.execute(status -> executeDrawInTx(userId, campaignId, idempotencyKey, count));
+    } catch (DataIntegrityViolationException e) {
+        // 5. 併發撞 UNIQUE（ADR-005 第二道防線：DB UNIQUE 為最終冪等保證）→ 重查已落庫記錄 → replay
+        List<DrawRecordEntity> existing = drawRecordRepository
+                .findByUserIdAndCampaignIdAndIdempotencyKeyOrderBySeqAsc(
+                        userId, campaignId, idempotencyKey);
+        if (existing.isEmpty()) {
+            throw e; // 非冪等衝突（如其他 constraint）→ 原異常
+        }
+        return replay(existing, count);
+    } finally {
+        redisClient.unlock(userId, campaignId, idempotencyKey);
     }
+}
+
+/**
+ * 於交易內重載活動並執行抽選落庫（TransactionTemplate 提供交易）。
+ */
+private PostCampaignDrawResponseDTOData executeDrawInTx(Long userId, Long campaignId,
+                                                       String idempotencyKey, int count) {
+    CampaignEntity fresh = campaignRepository.findById(campaignId)
+            .orElseThrow(ErrorCodes::campaignNotFound);
+    return executeDraw(userId, fresh, idempotencyKey, count);
+}
 
     private PostCampaignDrawResponseDTOData replay(List<DrawRecordEntity> records, int count) {
         if (count == 1) {
