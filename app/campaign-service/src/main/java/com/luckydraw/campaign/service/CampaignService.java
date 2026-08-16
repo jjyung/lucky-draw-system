@@ -64,7 +64,10 @@ public class CampaignService {
 
     @Transactional(readOnly = true)
     public CampaignEntity getCampaign(Long campaignId) {
-        return campaignRepository.findById(campaignId)
+        CampaignEntity campaign = campaignRepository.findById(campaignId)
                 .orElseThrow(ErrorCodes::campaignNotFound);
+        // 觸發 lazy load，供 controller 層 toDetail 在交易外讀取（避免 LazyInitializationException）
+        campaign.getPrizes().size();
+        return campaign;
     }
 }

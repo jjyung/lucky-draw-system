@@ -4,6 +4,7 @@ import com.luckydraw.campaign.event.PrizeStockEventPublisher;
 import com.luckydraw.campaign.model.entity.CampaignEntity;
 import com.luckydraw.campaign.model.entity.PrizeEntity;
 import com.luckydraw.campaign.repository.CampaignRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,13 +28,16 @@ class PrizeServiceReconcileTest {
     @Autowired
     private CampaignRepository campaignRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     private FakePublisher publisher;
     private PrizeService prizeService;
 
     @BeforeEach
     void setUp() {
         publisher = new FakePublisher();
-        prizeService = new PrizeService(campaignRepository, publisher);
+        prizeService = new PrizeService(campaignRepository, publisher, entityManager);
     }
 
     private CampaignEntity seedCampaign() {
@@ -98,8 +102,10 @@ class PrizeServiceReconcileTest {
         assertThat(publisher.events.get(0).oldQuantity()).isZero();
         assertThat(publisher.events.get(0).newQuantity()).isEqualTo(1);
         assertThat(publisher.events.get(0).configVersion()).isEqualTo(1);
+        assertThat(publisher.events.get(0).prizeId()).isNotNull(); // 新獎品已 persist、id 非 null（回歸：曾因 merge/sort 而 null）
         assertThat(publisher.events.get(1).newQuantity()).isEqualTo(10);
         assertThat(publisher.events.get(1).configVersion()).isEqualTo(1);
+        assertThat(publisher.events.get(1).prizeId()).isNotNull();
     }
 
     static class FakePublisher implements PrizeStockEventPublisher {

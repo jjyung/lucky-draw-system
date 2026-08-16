@@ -5,12 +5,12 @@ import com.luckydraw.campaign.event.PrizeStockEventPublisher;
 import com.luckydraw.campaign.model.entity.CampaignEntity;
 import com.luckydraw.campaign.model.entity.PrizeEntity;
 import com.luckydraw.campaign.repository.CampaignRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,10 +40,13 @@ public class PrizeService {
 
     private final CampaignRepository campaignRepository;
     private final PrizeStockEventPublisher prizeStockEventPublisher;
+    private final EntityManager entityManager;
 
-    public PrizeService(CampaignRepository campaignRepository, PrizeStockEventPublisher prizeStockEventPublisher) {
+    public PrizeService(CampaignRepository campaignRepository, PrizeStockEventPublisher prizeStockEventPublisher,
+                        EntityManager entityManager) {
         this.campaignRepository = campaignRepository;
         this.prizeStockEventPublisher = prizeStockEventPublisher;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -60,8 +63,14 @@ public class PrizeService {
 
         List<StockChange> changes = new ArrayList<>();
         List<PrizeEntity> reconciled = reconcile(campaign, prizes, changes);
-        // 先落庫取得新獎品 id（IDENTITY），再發布事件（與 DrawService 同：tx 內發布）
-        campaignRepository.saveAndFlush(campaign);
+        // 明確 persist 新獎品（IDENTITY 立即回填 id），再 flush；
+        // 不依賴 collection cascade（其 persist 延遲到 commit，事件發布時 id 尚未回填）。
+        for (PrizeEntity p : reconciled) {
+            if (p.getId() == null) {
+                entityManager.persist(p);
+            }
+        }
+        entityManager.flush();
         for (StockChange c : changes) {
             prizeStockEventPublisher.publishPrizeStockConfigured(
                     c.prize().getId(), campaign.getId(), c.oldQuantity(), c.newQuantity(), c.configVersion());
@@ -100,7 +109,9 @@ public class PrizeService {
             result.add(target);
         }
 
-        // 移除消失的獎品（orphanRemoval 刪除）；加入新獎品；重排 sortOrder
+        // 移除消失的獎品（orphanRemoval 刪除）；加入新獎品。
+        // 注意：不可對 PersistentBag 呼叫 sort()（會破壞 cascade persist 追蹤、新獎品 id 不落庫）；
+        // result 本就依 sortOrder 順序建立，回應直接回 result，不需重排 collection。
         Set<PrizeEntity> kept = new HashSet<>(result);
         campaign.getPrizes().removeIf(p -> !kept.contains(p));
         for (PrizeEntity r : result) {
@@ -108,7 +119,6 @@ public class PrizeService {
                 campaign.getPrizes().add(r);
             }
         }
-        campaign.getPrizes().sort(Comparator.comparing(PrizeEntity::getSortOrder));
         return result;
     }
 
