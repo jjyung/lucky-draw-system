@@ -83,6 +83,13 @@ function Assert-True([bool]$cond, [string]$label) {
     else { Write-Host "  [FAIL] $label" -ForegroundColor Red; $script:Failed++ }
 }
 
+function Get-RedisStock([string]$key) {
+    $v = docker exec lucky-draw-redis redis-cli GET $key 2>$null
+    $n = 0
+    if ($v -and $v -match '^-?\d+$') { $n = [int]$v }
+    return $n
+}
+
 function Wait-Healthy([string]$url, [int]$timeoutSec) {
     $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline) {
@@ -151,6 +158,18 @@ try {
     $draw2 = Invoke-Post "/campaigns/1/draw" "draw.json" @{ Authorization = "Bearer $userToken"; "Idempotency-Key" = $key }
     Assert-Code $draw1 "00000" "draw"
     Assert-True ($draw1 -eq $draw2) "replay byte-identical"
+
+    # 抽獎後庫存扣減（批次抽獎 → Redis 預扣遞減；DB 真相扣減由 integration 測試驗證）
+    # seed 活動庫存真相 = 1 + 10 + 100 = 111；抽獎結果隨機，故「有中獎才斷言 < 111、全銘謝惠顧則 skip」
+    Write-JsonFile "batch.json" @{ count = 9 }
+    $batch = Invoke-Post "/campaigns/1/draw" "batch.json" @{ Authorization = "Bearer $userToken"; "Idempotency-Key" = "dddddddd-dddd-dddd-dddd-dddddddddddd" }
+    Assert-Code $batch "00000" "batch draw"
+    $after = (Get-RedisStock "stock:1") + (Get-RedisStock "stock:2") + (Get-RedisStock "stock:3")
+    if ($batch -match '"resultType"\s*:\s*"WIN"') {
+        Assert-True ($after -lt 111) "stock deducted after draw (Redis pre-deduct, seed sum 111)"
+    } else {
+        Write-Host "  [SKIP] batch all THANK_YOU (no WIN), deduction assert skipped" -ForegroundColor Yellow
+    }
 
     # ---- J-1 ADMIN ----
     Write-Host "-- J-1 admin create/configure/activate --"

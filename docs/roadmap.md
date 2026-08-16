@@ -14,15 +14,15 @@
 
 **測試現況**（詳見 [test-matrix.md](testing/test-matrix.md)）：
 - unit：16 個測試類（TDD 不變量）
-- integration：6 類 9 條（Postgres 防超抽/冪等併發、Redis 預扣/踢最舊/限流、MQ 雙事件投遞）
-- E2E：手動驗證手冊 [manual-verification.md](testing/manual-verification.md) + 自動化 [scripts/smoke-test.ps1](../scripts/smoke-test.ps1)（實測通過）
+- integration：6 類 9 條（Postgres 防超抽/冪等併發、Redis 預扣/踢最舊/限流、MQ 雙事件投遞 — **test-binder 驗 binding 接線**）
+- E2E（smoke）：**真 RabbitMQ** 投遞由 [smoke-test.ps1](../scripts/smoke-test.ps1) 驗證（含「抽獎後庫存扣減」Redis 斷言，實測通過）
 
 ## 未完成（依優先序）
 
 | 項目 | 優先 | 說明 |
 |------|------|------|
 | Refresh token（`auth-tokens-002`） | Should | 目前回 501，未實作 |
-| 真 RabbitMQ 投遞整合 | 中 | 目前用 test-binder；prod at-least-once/group 語意未驗證 |
+| JUnit + 真 RabbitMQ 整合測試 | 低 | 真 broker 投遞已由 smoke-test.ps1 驗證；`InventoryEventDeliveryIT` 用 test-binder（`integrationTest` 未涵蓋真 broker）。要 CI 也驗真 broker 再補 |
 | E2E 正式回歸 | 中 | 功能全綠後由 SA/QA 依 journeys J-1/J-2/J-3 執行 |
 | HTTP method 錯誤 → 405 | 低 | 目前 `handleUnexpected` 把 `HttpRequestMethodNotSupportedException` 兜成 500 |
 | Go-prod | 不做 | Cloud Run/Secret Manager/固定 PEM（ADR-008 已文件化，非 POC 範圍） |
