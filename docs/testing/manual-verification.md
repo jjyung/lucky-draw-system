@@ -3,6 +3,9 @@
 > 對應 [`docs/stories/journeys.md`](../stories/journeys.md) 的 **J-1 / J-2 / J-3**，以 `curl` 手動走完三個旅程，
 > 驗證「四個服務 + Redis + RabbitMQ」**真實協作**（E2E）。此手冊同時是未來回歸自動化（腳本）的藍本。
 >
+> **已自動化**：`scripts/smoke-test.ps1` 將本手冊一鍵化（起 infra → 起服務 → 跑 J-1/J-2/J-3 + 負向 → 驗證 → 清理），
+> 並已實測通過。手動照本手冊亦可行（自動化腳本採用 ASCII 測試資料以避開 Windows PowerShell 中文編碼問題）。
+>
 > 所有請求皆打到 **API Gateway（`http://localhost:8080`）**，路徑帶 `/api/v1` 前綴。回應統一 envelope `{ code, message, data }`。
 
 ---
