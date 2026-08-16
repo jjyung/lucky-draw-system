@@ -21,5 +21,8 @@ bin/
 .env.*.local
 secrets/
 
+# 評分答案卷（面試用，不入版控）
+cheatsheet.md
+
 # openapi-generator 生成物（不入版控）
 app/**/build/generated/
