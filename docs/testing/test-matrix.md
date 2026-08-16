@@ -56,7 +56,7 @@
 |-------|-------------|------|-------------|-----|------|
 | ST-GW-001 身份驗證 | AC-GW-001/002/003/004 | ✅ `NimbusJwtVerifierTest` | — | — | 補 GlobalFilter 測試 |
 | ST-GW-002 身份傳遞 | AC-GW-004 | ⬜ | — | — | 補 filter 測試 |
-| ST-GW-003 限流 | AC-GW-006/007 | ⬜ | ⬜ Redis 限流 Lua/計數 | — | 補 Redis |
+| ST-GW-003 限流 | AC-GW-006/007 | ⬜ | ✅ `RateLimiterIT`（Redis 固定窗口併發計數） | — | — |
 | ST-GW-004 冪等識別檢查 | AC-GW-008/009 | ✅ `GatewayRoutesTest` | — | — | — |
 | ST-GW-005 路由 | AC-GW-004/005 | ⬜ | — | — | 補路由測試 |
 | ST-GW-006 公開功能 | AC-GW-010/011 | ✅ `GatewayRoutesTest` | — | — | — |
@@ -72,5 +72,4 @@
 
 ## 整合測試缺口優先序（§12.4：只測單元測不到的跨邊界不變量）
 
-1. ⬜ **Redis：ST-GW-003 限流**（gateway 固定窗口計數）
-2. ⬜ **MQ：ST-CAMP-003 `prize-stock-configured` 投遞**（與 `inventory-commit` 同 binder 機制，風險低）
+1. ⬜ **MQ：ST-CAMP-003 `prize-stock-configured` 投遞**（與 `inventory-commit` 同 binder 機制，風險低）
