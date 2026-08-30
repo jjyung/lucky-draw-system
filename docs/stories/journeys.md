@@ -18,14 +18,30 @@
 
 > 從零到一個「可抽獎」的活動，並在活動期間動態調整。
 
-```
-ADMIN ──登入──► auth ──簽發憑證(ROLE_ADMIN)──► gateway 驗證+傳遞身份
-   │
-   ├─ 建立活動 (DRAFT) ──► campaign ──► INSERT campaigns
-   ├─ 配置獎品+機率(總和100%) ──► campaign ──► upsert prizes + 發布 prize-stock-configured
-   ├─ 啟用活動 (DRAFT→ACTIVE) ──► campaign ──► 狀態轉移
-   ├─ 動態改獎品(名稱/數量/機率) ──► campaign ──► 後續抽獎生效 + 發布 prize-stock-configured
-   └─ 結束活動 (ACTIVE→ENDED) ──► campaign ──► 狀態轉移(終態)
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Auth as auth-service
+    participant GW as gateway
+    participant Campaign as campaign-service
+    participant Inventory as inventory-service
+
+    Admin->>Auth: POST /auth/login
+    Auth-->>Admin: 簽發憑證 (ROLE_ADMIN)
+    Admin->>GW: 帶憑證呼叫管理 API
+    GW->>GW: 驗證憑證 + 傳遞身份
+    GW->>Campaign: 建立活動 (DRAFT)
+    Campaign->>Campaign: INSERT campaigns
+    GW->>Campaign: 配置獎品+機率 (總和100%)
+    Campaign->>Campaign: upsert prizes
+    Campaign-)Inventory: 發布 prize-stock-configured
+    GW->>Campaign: 啟用活動 (DRAFT→ACTIVE)
+    Campaign->>Campaign: 狀態轉移
+    GW->>Campaign: 動態改獎品 (名稱/數量/機率)
+    Campaign->>Campaign: 後續抽獎生效
+    Campaign-)Inventory: 發布 prize-stock-configured
+    GW->>Campaign: 結束活動 (ACTIVE→ENDED)
+    Campaign->>Campaign: 狀態轉移 (終態)
 ```
 
 - **觸及 story**: ST-AUTH-002/004, ST-CAMP-001/002/003, ST-GW-001/002/005, ST-X-001/002
@@ -40,21 +56,35 @@ ADMIN ──登入──► auth ──簽發憑證(ROLE_ADMIN)──► gateway
 
 > 從註冊到抽中獎品（或銘謝惠顧）的完整路徑。
 
-```
-USER ──註冊──► auth ──► INSERT users (ROLE_USER, 密碼雜湊)
-   │
-   ├─ 登入 ──► auth ──► 簽發憑證
-   │
-   ├─ 瀏覽活動列表 ──► campaign (PUBLIC) ──► GET /campaigns
-   ├─ 查看活動詳情 ──► campaign (PUBLIC) ──► GET /campaigns/{id}   ★開放點#1
-   │
-   ├─ 抽獎(單次/批次, 帶 Idempotency-Key) ──► gateway 檢查冪等識別 ──► campaign
-   │      ├─ 檢查剩餘次數(活動總額)
-   │      ├─ 權重隨機選獎
-   │      ├─ 命中獎品 → 確認庫存；不足 → 降級銘謝惠顧
-   │      ├─ 記錄結果 + 計次
-   │      └─ 中獎 → 發布 inventory-commit ──► inventory 扣減真相
-   └─ 收到結果(中獎/銘謝惠顧)
+```mermaid
+sequenceDiagram
+    actor User
+    participant Auth as auth-service
+    participant GW as gateway
+    participant Campaign as campaign-service
+    participant Inventory as inventory-service
+
+    User->>Auth: POST /auth/register
+    Auth-->>User: INSERT users (ROLE_USER, 密碼雜湊)
+    User->>Auth: POST /auth/login
+    Auth-->>User: 簽發憑證
+    User->>Campaign: GET /campaigns (瀏覽列表)
+    User->>Campaign: GET /campaigns/{id} 查看詳情 ★開放點#1
+    User->>GW: 抽獎請求 (帶 Idempotency-Key)
+    GW->>GW: 檢查冪等識別
+    GW->>Campaign: 轉發抽獎請求
+    Campaign->>Campaign: 檢查剩餘次數 (活動總額)
+    Campaign->>Campaign: 權重隨機選獎
+    alt 命中獎品 且 庫存足夠
+        Campaign->>Campaign: 確認庫存
+        Campaign->>Campaign: 記錄結果 + 計次
+        Campaign-)Inventory: 發布 inventory-commit
+        Inventory->>Inventory: 扣減真相 (DB 條件更新)
+    else 未命中 或 庫存不足
+        Campaign->>Campaign: 降級銘謝惠顧
+        Campaign->>Campaign: 記錄結果 + 計次
+    end
+    Campaign-->>User: 回傳抽獎結果 (中獎/銘謝惠顧)
 ```
 
 - **觸及 story**: ST-AUTH-001/002, ST-CAMP-004/005/006/007/008/009, ST-GW-001/003/004/005/006, ST-X-001/002
@@ -69,13 +99,33 @@ USER ──註冊──► auth ──► INSERT users (ROLE_USER, 密碼雜湊)
 
 > 抽獎請求重送、以及庫存不足時的降級與補償路徑。
 
-```
-USER ──抽獎請求──► gateway ──► campaign
-   │
-   ├─ 相同 Idempotency-Key 重送 ──► campaign 回傳首次結果(replay, 不重抽/不重扣/不重計)
-   │
-   └─ 命中獎品但庫存不足 ──► campaign 降級銘謝惠顧(不重抽, 仍計次)
-                              └─► (若扣減時仍不足) inventory 撤銷中獎 + 校正 + 告警(OPS)
+```mermaid
+sequenceDiagram
+    actor User
+    participant GW as gateway
+    participant Campaign as campaign-service
+    participant Inventory as inventory-service
+    participant OPS as 營運/告警
+
+    User->>GW: 抽獎請求 (Idempotency-Key)
+    GW->>Campaign: 轉發請求
+    alt 相同 Idempotency-Key 重送
+        Campaign-->>User: 回傳首次結果 (replay, 不重抽/不重扣/不重計)
+    else 新請求
+        Campaign->>Campaign: 權重選獎
+        alt 命中獎品 但 Redis 庫存不足
+            Campaign->>Campaign: 降級銘謝惠顧 (不重抽, 仍計次)
+            Campaign-->>User: 回傳降級結果
+        else 命中獎品 且 Redis 庫存足夠
+            Campaign-)Inventory: 發布 inventory-commit
+            alt DB 條件更新扣減成功
+                Inventory->>Inventory: 出貨完成
+            else DB 扣減仍不足 (Redis/DB 不一致)
+                Inventory->>Inventory: 撤銷中獎 + 校正 Redis
+                Inventory-)OPS: 觸發告警
+            end
+        end
+    end
 ```
 
 - **觸及 story**: ST-CAMP-008/009, ST-INV-001/002/003, ST-GW-004
